@@ -38,7 +38,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             if (body == null || !body.Statements.Any())
             {
                 // If the function is empty, the metric is defined to be 1.
-                // ReportBumpyRoad(context, methodDeclaration, 1);
+                // ReportDiagnostics(context, methodDeclaration, 1);
                 return;
             }
 
@@ -49,7 +49,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             int statementCount = statementDepths.Count;
             if (statementCount == 0)
             {
-                // ReportBumpyRoad(context, methodDeclaration, 1);
+                // ReportDiagnostics(context, methodDeclaration, 1);
                 return;
             }
 
@@ -64,7 +64,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             // If the metric is high, report the issue
             if (normalizedScore > 2) // threshold
             {
-                ReportBumpyRoad(context, methodDeclaration, normalizedScore);
+                ReportDiagnostics(context, methodDeclaration, normalizedScore);
             }
         }
 
@@ -90,7 +90,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                  SyntaxKind.LocalDeclarationStatement or SyntaxKind.ExpressionStatement;
         }
 
-        private void ReportBumpyRoad(SyntaxNodeAnalysisContext context, MethodDeclarationSyntax methodDeclaration, double score)
+        private void ReportDiagnostics(SyntaxNodeAnalysisContext context, MethodDeclarationSyntax methodDeclaration, double score)
         {
             var diagnostic = Diagnostic.Create(
                 Rule,
