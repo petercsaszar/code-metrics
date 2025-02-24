@@ -19,7 +19,8 @@ namespace CodeMetricsAnalyzer.Analyzers
             category: "CodeSmell",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
-            description: "This method has a high level of statement nesting, making it harder to read.");
+            description: "This method has a high level of statement nesting, making it harder to read."
+        );
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
 

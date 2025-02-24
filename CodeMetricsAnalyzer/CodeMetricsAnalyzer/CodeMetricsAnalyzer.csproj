@@ -14,6 +14,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\CodeMetricsAnalyzer.Analyzers\CodeMetricsAnalyzer.Analyzers.csproj" />
+      <ProjectReference Include="..\CodeMetricsAnalyzer.Commands\CodeMetricsAnalyzer.Commands.csproj" />
     </ItemGroup>
 
 </Project>

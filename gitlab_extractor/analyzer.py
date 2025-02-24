@@ -14,7 +14,7 @@ GITLAB_URL = config["gitlab"]["url"]
 TOKEN = config["gitlab"]["token"]
 BUMPY_ANALYZER_PATH = config.get("bumpy_analyzer_path", "./BumpyRoadAnalyzer")
 MILESTONES = config["gitlab"]["milestone_keywords"]
-CLONE_DIR = config["clone_dir"]
+CLONE_DIR = config["project"]["clone_dir"]
 
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
@@ -63,16 +63,21 @@ def checkout_commit(repo_path, commit_id):
     """Checkout the specific commit."""
     repo = git.Repo(repo_path)
     repo.git.checkout(commit_id)
+    print(f"Checked out commit {commit_id}")
 
 
 def run_analyzers(repo_path):
     """Run the roslyn analyzers."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
+    solution_path = find_solution_file(repo_path)
+    if not solution_path:
+        print("❌ No solution found.")
+        return None
 
     print(f"🚀 Running analyzers for {repo_path} ...")
 
     command = [
-        "dotnet", "run", "--project", project_path, "--", repo_path
+        "dotnet", "run", "--project", project_path, "analyze", solution_path
     ]
 
     try:
@@ -111,17 +116,24 @@ def analyze_milestone(milestone_keywords = None):
 
 def analyze_all_milestones():
     """Analyze all milestone commits dynamically."""
-    final_results = {}
 
+    ind = 1
     for milestone in MILESTONES:
         milestone_results = analyze_milestone(milestone)
-        final_results.update(milestone_results)  # Merge results for each milestone
+        # Save results
+        with open(f"analysis_results_{ind}.json", "w") as f:
+            json.dump(milestone_results, f, indent=4)
+        ind = ind + 1
 
-    # Save results
-    with open("analysis_results.json", "w") as f:
-        json.dump(final_results, f, indent=4)
+    print("✅ Bumpy Road Analysis complete! Results saved to files.")
 
-    print("✅ Bumpy Road Analysis complete! Results saved to analysis_results.json")
+def find_solution_file(repo_path):
+    """Recursively searches for a .sln file in the given repository directory."""
+    for root, _, files in os.walk(repo_path):
+        for file in files:
+            if file.endswith(".sln"):
+                return os.path.join(root, file)  # Return the first .sln file found
+    return None  # No solution file found
 
 if __name__ == "__main__":
     analyze_all_milestones()

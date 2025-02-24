@@ -1,0 +1,668 @@
+{
+    "1014": {
+        "project_id": 1014,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "1004": {
+        "project_id": 1004,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "1002": {
+        "project_id": 1002,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 6,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "d5752c9b30d636c558785360969b60835a48f753"
+    },
+    "996": {
+        "project_id": 996,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "995": {
+        "project_id": 995,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 5,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "02c671743771cfebc633bda1751865045e639ebc"
+    },
+    "993": {
+        "project_id": 993,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 7,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "910e6a9b66dcd5fbbda923a25977ec941219cb2e"
+    },
+    "992": {
+        "project_id": 992,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-30",
+        "commits_on_burst_day": 5,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "9a2f26bbbd93f8ca7ce1dbbc42ae51b745efbdab"
+    },
+    "991": {
+        "project_id": 991,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 4,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "cc854cbdee3d261c86a46c995f3b9842a8fc6e7d"
+    },
+    "990": {
+        "project_id": 990,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "989": {
+        "project_id": 989,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "988": {
+        "project_id": 988,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 4,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "f3159650af05ca94ed8e895c41357b7a8d0b443b"
+    },
+    "986": {
+        "project_id": 986,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 9,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "5f9ce30d5ebedc97882137d69a7ccc195e9d2930"
+    },
+    "984": {
+        "project_id": 984,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "983": {
+        "project_id": 983,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "982": {
+        "project_id": 982,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "981": {
+        "project_id": 981,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-29",
+        "commits_on_burst_day": 20,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "c2203fc5020381aefd35d7c1d0005bf3dcc279ec"
+    },
+    "980": {
+        "project_id": 980,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "979": {
+        "project_id": 979,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-29",
+        "commits_on_burst_day": 5,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "ddb7bdba082558de9be0230a93b6315501fd729a"
+    },
+    "971": {
+        "project_id": 971,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "970": {
+        "project_id": 970,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "969": {
+        "project_id": 969,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "968": {
+        "project_id": 968,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "967": {
+        "project_id": 967,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 6,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "91dc470bc3573ce6dcd1616a991e2140ad1c552d"
+    },
+    "966": {
+        "project_id": 966,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "965": {
+        "project_id": 965,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "964": {
+        "project_id": 964,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "963": {
+        "project_id": 963,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 4,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "31752fd62af4f2065817026b77f3ceb1706bb51f"
+    },
+    "962": {
+        "project_id": 962,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "961": {
+        "project_id": 961,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 6,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "87bf01304d4fe513c58da48d48eec212f3620e5c"
+    },
+    "952": {
+        "project_id": 952,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-26",
+        "commits_on_burst_day": 4,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "b7cea83057db96f1120d89407f736468ab4ed48b"
+    },
+    "950": {
+        "project_id": 950,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 5,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "8b279e5cf45f60ab54908364d4ca8828dc49eae7"
+    },
+    "948": {
+        "project_id": 948,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "947": {
+        "project_id": 947,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "945": {
+        "project_id": 945,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 17,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "fc842dac586ad456181c3a68b3f184251cdbd65c"
+    },
+    "944": {
+        "project_id": 944,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 11,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "c31c3c6a4b7764fb30e516afa4d246e22a882187"
+    },
+    "943": {
+        "project_id": 943,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "942": {
+        "project_id": 942,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 12,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "fd52d13db928e8be6721f3da2abb63f83bdd786c"
+    },
+    "941": {
+        "project_id": 941,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 8,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "128ac2aef3a48ed058ab5c00c5815c43f97ba49b"
+    },
+    "940": {
+        "project_id": 940,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 33,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "3d7a16e56f2761f2897f4529d585e515bc061bfe"
+    },
+    "939": {
+        "project_id": 939,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 15,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "5e71a7964c18de0d95d1b408114ebce66c970c4b"
+    },
+    "938": {
+        "project_id": 938,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "937": {
+        "project_id": 937,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 5,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "2dda8c02e0464e266a0fe8e5ef001609e9af0dc6"
+    },
+    "936": {
+        "project_id": 936,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "935": {
+        "project_id": 935,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 12,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "b330f2b1d8a8c4ed7adbc91c92bd0f33864d83ed"
+    },
+    "934": {
+        "project_id": 934,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "933": {
+        "project_id": 933,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "923": {
+        "project_id": 923,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "922": {
+        "project_id": 922,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "906": {
+        "project_id": 906,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-28",
+        "commits_on_burst_day": 6,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "5b21bf3e5d7218b4856d290883240721f4273d59"
+    },
+    "905": {
+        "project_id": 905,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-29",
+        "commits_on_burst_day": 8,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "6b5e93266dc4d1808e142b9804d74b2b09ac24cf"
+    },
+    "904": {
+        "project_id": 904,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 7,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "20959851fb31d5471af7bd0cb9630cce4e740a68"
+    },
+    "903": {
+        "project_id": 903,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-30",
+        "commits_on_burst_day": 7,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "640d89e266831783678d8e929e7438e5beffdffd"
+    },
+    "901": {
+        "project_id": 901,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "900": {
+        "project_id": 900,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "899": {
+        "project_id": 899,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 17,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "e4e857be9899570d75bed5f48a9949b071375f44"
+    },
+    "898": {
+        "project_id": 898,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-28",
+        "commits_on_burst_day": 4,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "6f6a4ced90d57726a71cf7a765f47a7fef33916a"
+    },
+    "897": {
+        "project_id": 897,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "896": {
+        "project_id": 896,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "895": {
+        "project_id": 895,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "894": {
+        "project_id": 894,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-30",
+        "commits_on_burst_day": 5,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "5324e81bc914973dd4be3960670b3965dd610bcc"
+    },
+    "893": {
+        "project_id": 893,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-27",
+        "commits_on_burst_day": 9,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "dbc9c1f2f26d58f0de316e82e417ff3b6780dacd"
+    },
+    "892": {
+        "project_id": 892,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 7,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": "6be75f6609abac23c3ce16007a204ce2f7004346"
+    },
+    "876": {
+        "project_id": 876,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "863": {
+        "project_id": 863,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "862": {
+        "project_id": 862,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "860": {
+        "project_id": 860,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-29",
+        "commits_on_burst_day": 6,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "ebf72a5e0064f6fd319e42232a02aa9813a31f37"
+    },
+    "859": {
+        "project_id": 859,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "858": {
+        "project_id": 858,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "857": {
+        "project_id": 857,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "856": {
+        "project_id": 856,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "855": {
+        "project_id": 855,
+        "milestone_week": "2024-03-25",
+        "burst_day": "2024-03-25",
+        "commits_on_burst_day": 9,
+        "pause_detected": true,
+        "status": "Confirmed Milestone",
+        "last_commit_of_burst": "1dd8bf5775775981387fc3d83fbc0d1f31e2e71a"
+    },
+    "854": {
+        "project_id": 854,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "843": {
+        "project_id": 843,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    },
+    "842": {
+        "project_id": 842,
+        "milestone_week": "2024-03-25",
+        "burst_day": null,
+        "commits_on_burst_day": 0,
+        "pause_detected": false,
+        "status": "No Milestone",
+        "last_commit_of_burst": null
+    }
+}

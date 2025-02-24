@@ -3,16 +3,13 @@ gitlab:
   token: "<YOUR_ACCESS_TOKEN>"       # GitLab personal access token
   group_id: "<YOUR_GROUP_ID>"        # Main GitLab group ID
   milestone_keywords:                # Milestone names to search for
-    - "Prototípus I"
-    - "Prototípus 1"
-    - "Prototípus II"
-    - "Prototípus 2"
-    - "Final Commit"
+    - ["Prototípus I", "Prototípus 1", "Prototype I", "Prototype 1"]
+    - ["Prototípus II", "Prototípus 2", "Prototype II", "Prototype 2"]
 
 project:
   clone_dir: "./repos"              # Directory where repositories will be cloned
 
 analyzer:
-  solution_dir: "./CodeMetricsAnalyzer"  # Base directory of your .NET solution
-  project_dir: "./CodeMetricsAnalyzer/CodeMetricsAnalyzer"  # Directory of the executable project
+  solution_dir: "../CodeMetricsAnalyzer"  # Base directory of your .NET solution
+  project_dir: "../CodeMetricsAnalyzer/CodeMetricsAnalyzer/"  # Directory of the executable project
   project_file: "CodeMetricsAnalyzer.csproj"  # The main project file to run
