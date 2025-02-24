@@ -52,8 +52,8 @@ def clone_repo(project_id):
         git.Repo.clone_from(repo_url, repo_path)
     else:
         print(f"✅ Repository {project_id} already exists. Pulling latest changes...")
-        repo = git.Repo(repo_path)
-        repo.remotes.origin.pull()
+        # repo = git.Repo(repo_path)
+        # repo.remotes.origin.pull()
 
     return repo_path
 
@@ -62,7 +62,7 @@ def clone_repo(project_id):
 def checkout_commit(repo_path, commit_id):
     """Checkout the specific commit."""
     repo = git.Repo(repo_path)
-    repo.git.checkout(commit_id)
+    repo.git.checkout(commit_id, force=True)
     print(f"Checked out commit {commit_id}")
 
 

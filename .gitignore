@@ -402,3 +402,4 @@ FodyWeavers.xsd
 # Project specific
 config.yml
 repos/
+analysis_results_*.json

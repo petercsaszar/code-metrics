@@ -5,6 +5,7 @@ gitlab:
   milestone_keywords:                # Milestone names to search for
     - ["Prototípus I", "Prototípus 1", "Prototype I", "Prototype 1"]
     - ["Prototípus II", "Prototípus 2", "Prototype II", "Prototype 2"]
+    - ["Kész termék", "Végleges termék", "Finished"]
 
 project:
   clone_dir: "./repos"              # Directory where repositories will be cloned
