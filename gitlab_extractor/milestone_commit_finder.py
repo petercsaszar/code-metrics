@@ -10,7 +10,7 @@ with open("config.yml", "r") as file:
 
 # === Configuration ===
 GITLAB_URL = config["gitlab"]["url"]
-GROUP_ID = config["gitlab"]["group_id"]
+GROUP_ID = config["gitlab"]["group_id"] + ("%2f" + config["gitlab"]["subgroup_id"] if config["gitlab"]["subgroup_id"] else "")
 TOKEN = config["gitlab"]["token"]  # GitLab API token with read_repository permission
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
@@ -52,7 +52,7 @@ def get_project_milestone_date(project_id, milestone_keywords):
     milestones = response.json()
 
     if not isinstance(milestones, list) or not milestones:
-        return None  # No milestones found
+        return None, 0  # No milestones found
 
     best_milestone = None
     best_similarity_score = 0  # Higher score = better match
@@ -68,11 +68,11 @@ def get_project_milestone_date(project_id, milestone_keywords):
             similarity_score = fuzz.partial_ratio(milestone_title.lower(), keyword.lower())
 
             # If this milestone is the best match so far, save it
-            if similarity_score > best_similarity_score:
+            if (similarity_score > best_similarity_score and similarity_score > 70):
                 best_similarity_score = similarity_score
                 best_milestone = due_date
 
-    return best_milestone  # Return the milestone with the best fuzzy name match
+    return best_milestone, best_similarity_score  # Return the milestone with the best fuzzy name match with the match score
 
 
 def get_commits(project_id, until):
@@ -108,13 +108,15 @@ def get_subgroup_milestone_date(group_id, milestone_keywords):
     project_ids = get_projects(group_id)
 
     # Try to find a project where the milestone date is set
-    milestone_date = None
+    best_milestone_date = None
+    best_milestone_date_score = 0
     for project_id in project_ids:
-        milestone_date = get_project_milestone_date(project_id, milestone_keywords)
-        if milestone_date:
-           return milestone_date
+        milestone_date, milestone_date_score = get_project_milestone_date(project_id, milestone_keywords)
+        if milestone_date_score > best_milestone_date_score:
+           best_milestone_date_score = milestone_date_score
+           best_milestone_date = milestone_date
 
-    return None
+    return best_milestone_date
 
 
 
@@ -122,6 +124,9 @@ def get_milestone_commits(milestone_keywords):
     """Analyze all projects, find milestones, and fetch all commits."""
 
     subgroup_ids = get_subgroups(GROUP_ID)
+    if not subgroup_ids:
+        subgroup_ids.append(GROUP_ID)
+
     results = {}
 
     for subgroup_id in subgroup_ids:

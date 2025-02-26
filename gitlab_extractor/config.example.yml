@@ -2,10 +2,11 @@ gitlab:
   url: "https://gitlab.com/api/v4"  # GitLab API base URL
   token: "<YOUR_ACCESS_TOKEN>"       # GitLab personal access token
   group_id: "<YOUR_GROUP_ID>"        # Main GitLab group ID
+  subgroup_id: ""                     # optional
   milestone_keywords:                # Milestone names to search for
-    - ["Prototípus I", "Prototípus 1", "Prototype I", "Prototype 1"]
-    - ["Prototípus II", "Prototípus 2", "Prototype II", "Prototype 2"]
-    - ["Kész termék", "Végleges termék", "Finished"]
+    - ["Prototípus I", "Prototípus 1", "Prototype I", "Prototype 1", "Mérföldkő II", "Mérföldkő 2"]
+    - ["Prototípus II", "Prototípus 2", "Prototype II", "Prototype 2", "Mérföldkő III", "Mérföldkő 3"]
+    - ["Kész termék", "Végleges termék", "Finished", "Mérföldkő IV", "Mérföldkő 4"]
 
 project:
   clone_dir: "./repos"              # Directory where repositories will be cloned
