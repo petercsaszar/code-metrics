@@ -51,7 +51,7 @@ def clone_repo(project_id):
         os.makedirs(CLONE_DIR, exist_ok=True)
         git.Repo.clone_from(repo_url, repo_path)
     else:
-        print(f"✅ Repository {project_id} already exists. Pulling latest changes...")
+        print(f"✅ Repository {project_id} already exists.")
         # repo = git.Repo(repo_path)
         # repo.remotes.origin.pull()
 
