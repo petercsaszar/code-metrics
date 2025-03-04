@@ -14,7 +14,8 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
             return
             [
-                new BumpyRoadAnalyzer()
+                new BumpyRoadAnalyzer(),
+                new FunctionParamterCountAnalyzer()
             ];
         }
     }

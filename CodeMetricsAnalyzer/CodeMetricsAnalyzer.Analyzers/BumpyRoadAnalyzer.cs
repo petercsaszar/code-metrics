@@ -63,7 +63,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             double normalizedScore = Math.Clamp(bumpyRoadMetric, 1, maxDepth);
 
             // If the metric is high, report the issue
-            if (normalizedScore > 2) // threshold
+            if (normalizedScore > 3) // threshold
             {
                 ReportDiagnostics(context, methodDeclaration, normalizedScore);
             }
