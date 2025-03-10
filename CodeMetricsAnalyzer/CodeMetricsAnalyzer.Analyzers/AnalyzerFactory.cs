@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis.Diagnostics;
+﻿using CodeMetricsAnalyzer.Analyzers.Configurations;
+using Microsoft.CodeAnalysis.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -10,12 +11,12 @@ namespace CodeMetricsAnalyzer.Analyzers
 {
     public static class AnalyzerFactory
     {
-        public static ImmutableArray<DiagnosticAnalyzer> CreateAnalyzers()
+        public static ImmutableArray<DiagnosticAnalyzer> CreateAnalyzers(AnalyzerConfiguration config)
         {
             return
             [
-                new BumpyRoadAnalyzer(),
-                new FunctionParamterCountAnalyzer()
+                new BumpyRoadAnalyzer(config),
+                new FunctionParamterCountAnalyzer(config)
             ];
         }
     }

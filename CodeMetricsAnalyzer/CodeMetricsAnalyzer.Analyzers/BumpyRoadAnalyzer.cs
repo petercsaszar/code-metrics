@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using CodeMetricsAnalyzer.Analyzers.Configurations;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -12,6 +13,13 @@ namespace CodeMetricsAnalyzer.Analyzers
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class BumpyRoadAnalyzer : DiagnosticAnalyzer
     {
+        private readonly AnalyzerConfiguration _config;
+
+        public BumpyRoadAnalyzer(AnalyzerConfiguration config)
+        {
+            _config = config;
+        }
+
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
             id: "BR001",
             title: "Bumpy Road Code Smell",
@@ -63,7 +71,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             double normalizedScore = Math.Clamp(bumpyRoadMetric, 1, maxDepth);
 
             // If the metric is high, report the issue
-            if (normalizedScore > 3) // threshold
+            if (normalizedScore > _config.BumpyRoadAnalysis.BumpynessThreshold) // threshold
             {
                 ReportDiagnostics(context, methodDeclaration, normalizedScore);
             }

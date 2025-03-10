@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Runtime.InteropServices;
 using CodeMetricsAnalyzer.Commands.Analyze;
+using CodeMetricsAnalyzer.Analyzers.Configurations;
 
 namespace CodeMetricsAnalyzer;
 
@@ -62,11 +63,13 @@ public class Program
 
             var source = context.ParseResult.GetValueForArgument(sourceArgument);
             var output = context.ParseResult.GetValueForOption(outputOption);
+            var analyzerConfiguration = await LoadAppSettingsAsync(cancellationToken);
 
             var options = new AnalyzeCommandOptions
             {
                 Source = source,
-                Output = output
+                Output = output,
+                AnalyzerConfiguration = analyzerConfiguration
             };
 
             var analyzeCommand = new AnalyzeCommand(options);
@@ -74,5 +77,24 @@ public class Program
         });
 
         return command;
+    }
+
+    private static async Task<AnalyzerConfiguration> LoadAppSettingsAsync(CancellationToken cancellationToken = default)
+    {
+        var directory = new FileInfo(Assembly.GetExecutingAssembly().Location).Directory?.FullName;
+        if (directory is null)
+        {
+            throw new Exception("Error determining executing assembly directory.");
+        }
+
+        var path = Path.Combine(directory, "appsettings.json");
+        var json = await File.ReadAllTextAsync(path, cancellationToken);
+        var appSettings = JsonSerializer.Deserialize<AnalyzerConfiguration>(json);
+        if (appSettings is null)
+        {
+            throw new Exception("Error loading appsettings.json file.");
+        }
+
+        return appSettings;
     }
 }

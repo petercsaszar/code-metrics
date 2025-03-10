@@ -48,7 +48,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             CreateWorkspace();
 
 
-            var analyzers = AnalyzerFactory.CreateAnalyzers();
+            var analyzers = AnalyzerFactory.CreateAnalyzers(_options.AnalyzerConfiguration);
 
             var results = (await AnalyzeAsync(analyzers, cancellationToken)).ToList();
 

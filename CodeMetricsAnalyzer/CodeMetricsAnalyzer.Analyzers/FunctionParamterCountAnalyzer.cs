@@ -8,17 +8,24 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using CodeMetricsAnalyzer.Analyzers.Configurations;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class FunctionParamterCountAnalyzer : DiagnosticAnalyzer
     {
+        private readonly AnalyzerConfiguration _config;
+
+        public FunctionParamterCountAnalyzer(AnalyzerConfiguration config)
+        {
+            _config = config;
+        }
+
         private const string DiagnosticId = "FPC001";
         private const string Title = "Too many parameters";
         private const string MessageFormat = "Method '{0}' has {1} parameters, which exceeds the defined threshold of {2}.";
         private const string Category = "CodeQuality";
-        private const int ParameterThreshold = 5; // Change this to configure the threshold
 
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
             DiagnosticId, Title, MessageFormat, Category,
@@ -33,19 +40,19 @@ namespace CodeMetricsAnalyzer.Analyzers
             context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
         }
 
-        private static void AnalyzeMethod(SyntaxNodeAnalysisContext context)
+        private void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
             var methodDeclaration = (MethodDeclarationSyntax)context.Node;
             int parameterCount = methodDeclaration.ParameterList.Parameters.Count;
 
-            if (parameterCount > ParameterThreshold)
+            if (parameterCount > _config.FunctionParameterCountAnalysis.ParameterCountThreshold)
             {
                 var diagnostic = Diagnostic.Create(
                     Rule,
                     methodDeclaration.Identifier.GetLocation(),
                     methodDeclaration.Identifier.Text,
                     parameterCount,
-                    ParameterThreshold);
+                    _config.FunctionParameterCountAnalysis.ParameterCountThreshold);
 
                 context.ReportDiagnostic(diagnostic);
             }
