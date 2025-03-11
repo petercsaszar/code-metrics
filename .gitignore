@@ -403,3 +403,4 @@ FodyWeavers.xsd
 config.yml
 repos/
 analysis_results_*.json
+commit_data.json
