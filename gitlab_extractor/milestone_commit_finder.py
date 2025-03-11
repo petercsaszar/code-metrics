@@ -154,5 +154,8 @@ def get_milestone_commits(milestone_keywords):
             }
 
             print(f"✅ Processed project {project_id}.")
+
+    with open("commit_data.json", "w") as f:
+            json.dump(results, f, indent=4)
     
     return results

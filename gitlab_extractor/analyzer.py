@@ -91,7 +91,14 @@ def run_analyzers(repo_path):
 def analyze_milestone(milestone_keywords = None):
     """Analyze all milestone commits using Bumpy Road Analyzer."""
     print(f"🔍 Fetching commits for milestone: {milestone_keywords}")
-    commit_data = get_milestone_commits(milestone_keywords)
+    try:
+         with open("commit_data.json", "r") as file:
+            commit_data = json.load(file)
+    except (FileNotFoundError):
+        get_milestone_commits(milestone_keywords)
+        with open("commit_data.json", "r") as file:
+            commit_data = json.load(file)
+
 
     results = {}
 
