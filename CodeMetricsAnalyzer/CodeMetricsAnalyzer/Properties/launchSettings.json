@@ -2,7 +2,7 @@
   "profiles": {
     "CodeMetricsAnalyzer": {
       "commandName": "Project",
-      "commandLineArgs": "analyze C:\\Users\\csasz\\Downloads\\HF2\\HF1\\proba2\\Base\\HF1.sln --output output.xml"
+      "commandLineArgs": "analyze Solution.sln --output output.xml"
     }
   }
 }

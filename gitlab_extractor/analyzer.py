@@ -18,6 +18,7 @@ CLONE_DIR = config["project"]["clone_dir"]
 
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
+UNITY_PATH = config["analyzer"]["unity_path"]
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
 
@@ -141,7 +142,31 @@ def find_solution_file(repo_path):
         for file in files:
             if file.endswith(".sln"):
                 return os.path.join(root, file)  # Return the first .sln file found
+    # Check if it's a Unity project
+    unity_project_settings = os.path.join(repo_path, "ProjectSettings", "ProjectVersion.txt")
+    if os.path.exists(unity_project_settings):
+        print("🎮 Detected Unity project. Generating solution file...")
+        generate_unity_solution(repo_path)
+        
+        # Search again for the generated solution
+        for root, _, files in os.walk(repo_path):
+            for file in files:
+                if file.endswith(".sln"):
+                    return os.path.join(root, file)
+    
     return None  # No solution file found
+
+def generate_unity_solution(repo_path):
+    """Uses Unity to generate a Visual Studio solution."""
+    command = [
+        UNITY_PATH, "-batchmode", "-quit", "-nographics", "-projectPath", repo_path, "-executeMethod", "UnityEditor.SyncVS.SyncSolution"
+    ]
+    try:
+        subprocess.run(command, check=True)
+        print("✅ Unity solution file generated.")
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error generating Unity solution: {e}")
+
 
 if __name__ == "__main__":
     analyze_all_milestones()

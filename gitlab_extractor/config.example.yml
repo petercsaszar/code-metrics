@@ -15,3 +15,4 @@ analyzer:
   solution_dir: "../CodeMetricsAnalyzer"  # Base directory of your .NET solution
   project_dir: "../CodeMetricsAnalyzer/CodeMetricsAnalyzer/"  # Directory of the executable project
   project_file: "CodeMetricsAnalyzer.csproj"  # The main project file to run
+  unity_path: "" # optional, the Unity.exe path for creating .sln files for Unity projects
