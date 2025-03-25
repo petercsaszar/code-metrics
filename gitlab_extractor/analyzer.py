@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import subprocess
 import git
@@ -83,7 +84,16 @@ def run_analyzers(repo_path):
 
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
-        return result.stdout  # Capture and return analyzer output
+        match_bumpy = re.search(r"(\d+)\s+BR001", result.stdout)
+        match_fpc = re.search(r"(\d+)\s+FPC001", result.stdout)
+        formatted_result = {
+            "bumpy_score": int(match_bumpy.group(1)) if match_bumpy else 0,
+            "fpc_score": int(match_fpc.group(1)) if match_fpc else 0
+        }
+
+        return formatted_result
+
+        
     except subprocess.CalledProcessError as e:
         print(f"❌ Error running analyzer: {e}")
         return None
@@ -118,7 +128,8 @@ def analyze_milestone(milestone_keywords = None):
             results[project_id] = {
                 "project_id": project_id,
                 "commit_id": commit_id,
-                "bumpy_analysis": analysis_result
+                "bumpy_score": analysis_result["bumpy_score"],
+                "fpc_score": analysis_result["fpc_score"]
             }
 
     return results
