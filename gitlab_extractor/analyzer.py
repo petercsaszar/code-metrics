@@ -86,9 +86,12 @@ def run_analyzers(repo_path):
         result = subprocess.run(command, capture_output=True, text=True, check=True)
         match_bumpy = re.search(r"(\d+)\s+BR001", result.stdout)
         match_fpc = re.search(r"(\d+)\s+FPC001", result.stdout)
+        match_lcom5 = re.search(r"(\d+)\s+LCOM5", result.stdout)
+
         formatted_result = {
             "bumpy_score": int(match_bumpy.group(1)) if match_bumpy else 0,
-            "fpc_score": int(match_fpc.group(1)) if match_fpc else 0
+            "fpc_score": int(match_fpc.group(1)) if match_fpc else 0,
+            "lcom5_score": int(match_lcom5.group(1)) if match_lcom5 else 0
         }
 
         return formatted_result
@@ -129,7 +132,8 @@ def analyze_milestone(milestone_keywords = None):
                 "project_id": project_id,
                 "commit_id": commit_id,
                 "bumpy_score": analysis_result["bumpy_score"],
-                "fpc_score": analysis_result["fpc_score"]
+                "fpc_score": analysis_result["fpc_score"],
+                "lcom5_score": analysis_result["lcom5_score"]
             }
 
     return results

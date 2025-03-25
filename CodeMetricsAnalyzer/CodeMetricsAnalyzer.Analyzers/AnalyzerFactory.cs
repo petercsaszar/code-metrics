@@ -16,7 +16,8 @@ namespace CodeMetricsAnalyzer.Analyzers
             return
             [
                 new BumpyRoadAnalyzer(config),
-                new FunctionParamterCountAnalyzer(config)
+                new FunctionParamterCountAnalyzer(config),
+                new LCOM5Analyzer(config)
             ];
         }
     }

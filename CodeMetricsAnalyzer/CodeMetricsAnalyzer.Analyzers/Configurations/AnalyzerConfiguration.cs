@@ -4,5 +4,7 @@
     {
         public BumpyRoadAnalysisConfiguration BumpyRoadAnalysis { get; init; }
         public FunctionParameterCountAnalysisConfiguration FunctionParameterCountAnalysis { get; init; }
+
+        public LCOM5AnalysisConfiguration LCOM5Analysis { get; init; }
     }
 }
