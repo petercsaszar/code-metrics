@@ -30,6 +30,8 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
 
     public override void Initialize(AnalysisContext context)
     {
+        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
+        context.EnableConcurrentExecution();
         context.RegisterSyntaxNodeAction(AnalyzeClass, SyntaxKind.ClassDeclaration);
     }
 
@@ -48,7 +50,7 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
 
         var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
 
-        if (methods.Count < 2 || fields.Count == 0)
+        if (methods.Count < _config.LCOM5Analysis.MinimumMethodCount || fields.Count < _config.LCOM5Analysis.MinimumFieldCount)
             return;
 
         Dictionary<IMethodSymbol, HashSet<IFieldSymbol>> methodAccesses = new();
@@ -87,10 +89,10 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
                                 }
                             }
                         }
-                        catch (Exception)
+                        catch (ArgumentException)
                         {
-                            // Ignore exceptions for now
-                            // Debugging prints
+                            // Ignore exceptions for now, likely due to generated code
+                            //// Debugging prints
                             //Console.WriteLine($"Method: {syntax.Identifier.Text}");
                             //Console.WriteLine($"SyntaxTree: {syntax.SyntaxTree.FilePath}");
                             //Console.WriteLine($"Body SyntaxTree: {body?.SyntaxTree?.FilePath}");
@@ -103,13 +105,14 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
             methodAccesses[method] = accessedFields;
         }
 
-        int M = methods.Count;
-        int V = fields.Count;
-        double sum_Ai = methodAccesses.Values.Sum(set => set.Count);
+        int K = methods.Count;
+        int L = fields.Count;
+        double A = methodAccesses.Values.Sum(set => set.Count);
 
-        double LCOM5 = (M - (sum_Ai / V)) / (M - 1);
+        double LCOM5 = (A-K*L) / (L-K*L);
+        //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
 
-        if (LCOM5 > _config.LCOM5Analysis.LCOM5CohesionThreshold) // Alert if cohesion is low
+        if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold) // Alert if cohesion is low
         {
             var diagnostic = Diagnostic.Create(Rule, classDeclaration.Identifier.GetLocation(), classSymbol.Name, LCOM5);
             context.ReportDiagnostic(diagnostic);

@@ -1,3 +1,6 @@
 .ipynb_checkpoints/
 venv/
 threshold_analysis_data
+repos.txt
+public_analysis_results.json
+public_repos

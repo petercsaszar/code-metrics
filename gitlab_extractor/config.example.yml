@@ -11,6 +11,10 @@ gitlab:
 project:
   clone_dir: "./repos"              # Directory where repositories will be cloned
 
+public_analyzer:
+  repository_list: "repos.txt"      # List of public repos to analyze
+  clone_dir: "./public_repos"              # Directory where repositories will be cloned
+
 analyzer:
   solution_dir: "../CodeMetricsAnalyzer"  # Base directory of your .NET solution
   project_dir: "../CodeMetricsAnalyzer/CodeMetricsAnalyzer/"  # Directory of the executable project

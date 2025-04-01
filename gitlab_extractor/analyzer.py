@@ -160,6 +160,9 @@ def find_solution_file(repo_path):
     # Check if it's a Unity project
     unity_project_settings = os.path.join(repo_path, "ProjectSettings", "ProjectVersion.txt")
     if os.path.exists(unity_project_settings):
+        if (not UNITY_PATH):
+            print("🎮 Detected Unity project. Unity is not configured, skipping...")
+            return None
         print("🎮 Detected Unity project. Generating solution file...")
         generate_unity_solution(repo_path)
         

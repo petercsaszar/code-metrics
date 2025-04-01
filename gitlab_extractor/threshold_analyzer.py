@@ -41,6 +41,8 @@ def update_config(new_threshold):
         conf = json.load(f)
 
     conf["BumpyRoadAnalysis"]["BumpynessThreshold"] = new_threshold
+    conf["FunctionParameterCountAnalysis"]["ParameterCountThreshold"] = new_threshold
+    conf["LCOM5Analysis"]["CohesionThreshold"] = 1 + ((new_threshold-1)*3)/9 # normalize value beetween 1 and 4
 
     with open(config_path, "w", encoding="utf8") as f:
         json.dump(conf, f, indent=4)
@@ -62,7 +64,8 @@ def analyze_projects():
                 results[project] = {
                     "project_id": project,
                     "bumpy_score": analysis_result["bumpy_score"],
-                    "fpc_score": analysis_result["fpc_score"]
+                    "fpc_score": analysis_result["fpc_score"],
+                    "lcom5_score": analysis_result["lcom5_score"]
                 }
 
         # Define directory and file path

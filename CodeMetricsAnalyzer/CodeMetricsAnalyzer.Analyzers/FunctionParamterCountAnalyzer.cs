@@ -24,7 +24,7 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         private const string DiagnosticId = "FPC001";
         private const string Title = "Too many parameters";
-        private const string MessageFormat = "Method '{0}' has {1} parameters, which exceeds the defined threshold of {2}.";
+        private const string MessageFormat = "Method '{0}' has {1} parameters, which exceeds the defined threshold of {2}";
         private const string Category = "CodeQuality";
 
         private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
