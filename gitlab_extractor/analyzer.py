@@ -88,10 +88,17 @@ def run_analyzers(repo_path):
         match_fpc = re.search(r"(\d+)\s+FPC001", result.stdout)
         match_lcom5 = re.search(r"(\d+)\s+LCOM5", result.stdout)
 
+        bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
+        fpc_score = int(match_fpc.group(1)) if match_fpc else 0
+        lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
+
+        if "diagnostics found" not in result.stdout:
+            print(f"❌ Error running analyzer: {result.stdout}")
+
         formatted_result = {
-            "bumpy_score": int(match_bumpy.group(1)) if match_bumpy else 0,
-            "fpc_score": int(match_fpc.group(1)) if match_fpc else 0,
-            "lcom5_score": int(match_lcom5.group(1)) if match_lcom5 else 0
+            "bumpy_score": bumpy_score,
+            "fpc_score": fpc_score,
+            "lcom5_score": lcom5_score
         }
 
         return formatted_result
