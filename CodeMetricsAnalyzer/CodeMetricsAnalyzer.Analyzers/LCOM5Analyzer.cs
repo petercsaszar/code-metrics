@@ -68,7 +68,7 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
 
                     if (body == null && syntax.ExpressionBody != null)
                     {
-                        // Handle expression-bodied methods (e.g., `int Square(int x) => x * x;`)
+                        // Handle expression-bodied methods (e.g. int Square(int x) => x * x)
                         body = SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(syntax.ExpressionBody.Expression));
                     }
 
@@ -112,7 +112,7 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
         double LCOM5 = (A-K*L) / (L-K*L);
         //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
 
-        if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold) // Alert if cohesion is low
+        if (LCOM5 < _config.LCOM5Analysis.CohesionThreshold)
         {
             var diagnostic = Diagnostic.Create(Rule, classDeclaration.Identifier.GetLocation(), classSymbol.Name, LCOM5);
             context.ReportDiagnostic(diagnostic);

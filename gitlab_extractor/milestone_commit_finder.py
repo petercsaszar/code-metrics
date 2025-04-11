@@ -52,10 +52,10 @@ def get_project_milestone_date(project_id, milestone_keywords):
     milestones = response.json()
 
     if not isinstance(milestones, list) or not milestones:
-        return None, 0  # No milestones found
+        return None, 0
 
     best_milestone = None
-    best_similarity_score = 0  # Higher score = better match
+    best_similarity_score = 0
 
     for milestone in milestones:
         milestone_title = milestone.get("title", "")
@@ -67,12 +67,11 @@ def get_project_milestone_date(project_id, milestone_keywords):
         for keyword in milestone_keywords:
             similarity_score = fuzz.partial_ratio(milestone_title.lower(), keyword.lower())
 
-            # If this milestone is the best match so far, save it
             if (similarity_score > best_similarity_score and similarity_score > 70):
                 best_similarity_score = similarity_score
                 best_milestone = due_date
 
-    return best_milestone, best_similarity_score  # Return the milestone with the best fuzzy name match with the match score
+    return best_milestone, best_similarity_score
 
 
 def get_commits(project_id, until):
@@ -80,7 +79,7 @@ def get_commits(project_id, until):
     url = f"{GITLAB_URL}/projects/{project_id}/repository/commits"
     params = {
         "per_page": 100,
-        "until": until.isoformat()  # Get commits up to this date
+        "until": until.isoformat()
     }
 
     response = requests.get(url, headers=HEADERS, params=params)
@@ -156,6 +155,6 @@ def get_milestone_commits(milestone_keywords):
             print(f"✅ Processed project {project_id}.")
 
     # with open("commit_data.json", "w") as f:
-     #       json.dump(results, f, indent=4)
+    #       json.dump(results, f, indent=4)
     
     return results

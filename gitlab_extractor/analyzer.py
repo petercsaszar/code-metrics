@@ -45,7 +45,7 @@ def clone_repo(project_id):
         print(f"⚠ Skipping project {project_id} - Repository URL not found")
         return None
 
-    # Add authentication token to the URL
+    # add auth token
     repo_url = repo_url.replace("https://", f"https://oauth2:{TOKEN}@")
 
     if not os.path.exists(repo_path):
@@ -151,7 +151,7 @@ def analyze_all_milestones():
     ind = 1
     for milestone in MILESTONES:
         milestone_results = analyze_milestone(milestone)
-        # Save results
+
         with open(f"analysis_results_{ind}.json", "w") as f:
             json.dump(milestone_results, f, indent=4)
         ind = ind + 1
@@ -163,7 +163,8 @@ def find_solution_file(repo_path):
     for root, _, files in os.walk(repo_path):
         for file in files:
             if file.endswith(".sln"):
-                return os.path.join(root, file)  # Return the first .sln file found
+                return os.path.join(root, file)
+            
     # Check if it's a Unity project
     unity_project_settings = os.path.join(repo_path, "ProjectSettings", "ProjectVersion.txt")
     if os.path.exists(unity_project_settings):

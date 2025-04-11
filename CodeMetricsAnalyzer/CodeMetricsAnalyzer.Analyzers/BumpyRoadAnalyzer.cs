@@ -46,34 +46,27 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             if (body == null || !body.Statements.Any())
             {
-                // If the function is empty, the metric is defined to be 1.
-                // ReportDiagnostics(context, methodDeclaration, 1);
+                // Empty body is not evaluated
                 return;
             }
 
             // Compute depth for each statement
             var statementDepths = new List<int>();
-            ComputeStatementDepths(body, 0, statementDepths); // Start depth at 0 (method level)
+            ComputeStatementDepths(body, 0, statementDepths);
 
             int statementCount = statementDepths.Count;
             if (statementCount == 0)
             {
-                // ReportDiagnostics(context, methodDeclaration, 1);
+                // zero statements count should not be evaluated
                 return;
             }
 
-            // Compute the Bumpy Road metric
             double totalBumpiness = statementDepths.Sum();
             double bumpyRoadMetric = totalBumpiness / statementCount;
 
-            // Get max depth
-            int maxDepth = statementDepths.Max();
-            double normalizedScore = Math.Clamp(bumpyRoadMetric, 1, maxDepth);
-
-            // If the metric is high, report the issue
-            if (normalizedScore > _config.BumpyRoadAnalysis.BumpynessThreshold) // threshold
+            if (bumpyRoadMetric > _config.BumpyRoadAnalysis.BumpynessThreshold) // threshold
             {
-                ReportDiagnostics(context, methodDeclaration, normalizedScore);
+                ReportDiagnostics(context, methodDeclaration, bumpyRoadMetric);
             }
         }
 
@@ -86,7 +79,6 @@ namespace CodeMetricsAnalyzer.Analyzers
                     depths.Add(currentDepth + 1);
                 }
 
-                // Recursively check nested statements with increased depth
                 ComputeStatementDepths(child, currentDepth + 1, depths);
             }
         }
