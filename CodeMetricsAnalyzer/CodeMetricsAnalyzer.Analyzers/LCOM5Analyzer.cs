@@ -1,41 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
+﻿using System.Collections.Immutable;
+using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
+using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
+namespace CodeMetricsAnalyzer.Analyzers;
+
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class LCOM5Analyzer : DiagnosticAnalyzer
+public class LCOM5Analyzer(AnalyzerConfiguration config) : ClassAnalyzer(config)
 {
-    private readonly AnalyzerConfiguration _config;
+    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.LCOM5Rule];
 
-    public LCOM5Analyzer(AnalyzerConfiguration config)
-    {
-        _config = config;
-    }
-
-    private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
-        "LCOM5",
-        "Lack of Cohesion of Methods (LCOM5)",
-        "Class '{0}' has an LCOM5 value of {1}. Consider refactoring.",
-        "Cohesion",
-        DiagnosticSeverity.Warning,
-        isEnabledByDefault: true);
-
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
-
-    public override void Initialize(AnalysisContext context)
-    {
-        context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze | GeneratedCodeAnalysisFlags.ReportDiagnostics);
-        context.EnableConcurrentExecution();
-        context.RegisterSyntaxNodeAction(AnalyzeClass, SyntaxKind.ClassDeclaration);
-    }
-
-    private void AnalyzeClass(SyntaxNodeAnalysisContext context)
+    protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
     {
         var classDeclaration = (ClassDeclarationSyntax)context.Node;
         var semanticModel = context.SemanticModel;
@@ -61,8 +40,7 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
 
             foreach (var syntaxRef in method.DeclaringSyntaxReferences)
             {
-                var syntax = syntaxRef.GetSyntax() as MethodDeclarationSyntax;
-                if (syntax != null)
+                if (syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax)
                 {
                     BlockSyntax? body = syntax.Body; // Normal method body
 
@@ -112,10 +90,13 @@ public class LCOM5Analyzer : DiagnosticAnalyzer
         double LCOM5 = (A-K*L) / (L-K*L);
         //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
 
-        if (LCOM5 < _config.LCOM5Analysis.CohesionThreshold)
+        if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold)
         {
-            var diagnostic = Diagnostic.Create(Rule, classDeclaration.Identifier.GetLocation(), classSymbol.Name, LCOM5);
-            context.ReportDiagnostic(diagnostic);
+            ReportDiagnostics(
+                context,
+                DiagnosticDescriptors.LCOM5Rule,
+                classDeclaration.Identifier.GetLocation(),
+                classSymbol.Name, LCOM5);
         }
     }
 }

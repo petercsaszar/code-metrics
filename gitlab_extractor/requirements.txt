@@ -1,12 +1,12 @@
 fuzzywuzzy
-python-Levenshtein
-GitPython
-PyYAML
-Requests
+python-levenshtein
+gitpython
+pyyaml
+requests
 matplotlib
 pandas
 seaborn
 numpy
 kneed
 notebook
-urllib
+urllib3

@@ -78,21 +78,26 @@ def run_analyzers(repo_path):
 
     print(f"🚀 Running analyzers for {repo_path} ...")
 
-    command = [
+    build_command = [
+        "dotnet", "build", solution_path
+    ]
+    
+    analyze_command = [
         "dotnet", "run", "--project", project_path, "analyze", solution_path
     ]
 
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True)
-        match_bumpy = re.search(r"(\d+)\s+BR001", result.stdout)
-        match_fpc = re.search(r"(\d+)\s+FPC001", result.stdout)
-        match_lcom5 = re.search(r"(\d+)\s+LCOM5", result.stdout)
+        subprocess.run(build_command, capture_output=True, text=True, check=True)
+        result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+        match_bumpy = re.search(r"(\d+)\s+CMA001", result.stdout)
+        match_fpc = re.search(r"(\d+)\s+CMA002", result.stdout)
+        match_lcom5 = re.search(r"(\d+)\s+CMA003", result.stdout)
 
         bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
         fpc_score = int(match_fpc.group(1)) if match_fpc else 0
         lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
 
-        if "diagnostics found" not in result.stdout:
+        if "diagnostics found" not in result.stdout or "diagnostic found" not in result.stdout:
             print(f"❌ Error running analyzer: {result.stdout}")
 
         formatted_result = {

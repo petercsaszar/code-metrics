@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
+using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -11,35 +13,11 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class BumpyRoadAnalyzer : DiagnosticAnalyzer
+    public class BumpyRoadAnalyzer(AnalyzerConfiguration config) : MethodAnalyzer(config)
     {
-        private readonly AnalyzerConfiguration _config;
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.BumpyRoadRule];
 
-        public BumpyRoadAnalyzer(AnalyzerConfiguration config)
-        {
-            _config = config;
-        }
-
-        private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(
-            id: "BR001",
-            title: "Bumpy Road Code Smell",
-            messageFormat: "Method '{0}' has a high bumpy road score ({1:F2}). Consider refactoring deeply nested structures.",
-            category: "CodeSmell",
-            defaultSeverity: DiagnosticSeverity.Warning,
-            isEnabledByDefault: true,
-            description: "This method has a high level of statement nesting, making it harder to read."
-        );
-
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Rule);
-
-        public override void Initialize(AnalysisContext context)
-        {
-            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-            context.EnableConcurrentExecution();
-            context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
-        }
-
-        private void AnalyzeMethod(SyntaxNodeAnalysisContext context)
+        protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
             var methodDeclaration = (MethodDeclarationSyntax)context.Node;
             var body = methodDeclaration.Body;
@@ -66,7 +44,7 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             if (bumpyRoadMetric > _config.BumpyRoadAnalysis.BumpynessThreshold) // threshold
             {
-                ReportDiagnostics(context, methodDeclaration, bumpyRoadMetric);
+                ReportDiagnostics(context, DiagnosticDescriptors.BumpyRoadRule, methodDeclaration.Identifier.GetLocation(), bumpyRoadMetric);
             }
         }
 
@@ -89,17 +67,6 @@ namespace CodeMetricsAnalyzer.Analyzers
                 SyntaxKind.IfStatement or SyntaxKind.ForStatement or SyntaxKind.WhileStatement or
                  SyntaxKind.DoStatement or SyntaxKind.SwitchStatement or SyntaxKind.Block or
                  SyntaxKind.LocalDeclarationStatement or SyntaxKind.ExpressionStatement;
-        }
-
-        private void ReportDiagnostics(SyntaxNodeAnalysisContext context, MethodDeclarationSyntax methodDeclaration, double score)
-        {
-            var diagnostic = Diagnostic.Create(
-                Rule,
-                methodDeclaration.Identifier.GetLocation(),
-                methodDeclaration.Identifier.Text,
-                score);
-
-            context.ReportDiagnostic(diagnostic);
         }
     }
 }

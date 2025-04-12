@@ -5,10 +5,23 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+
+	    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+	    <PackAsTool>true</PackAsTool>
+	    <ToolCommandName>CodeMetricsAnalyzer</ToolCommandName>
+	    <PackageOutputPath>./nupkg</PackageOutputPath>
+	    <PackageId>ELTE.FI.CodeMetricsAnalyzer</PackageId>
+	    <Version>1.0.0</Version>
+	    <Authors>Péter János Császár, Máté Cserép</Authors>
+	    <Company>ELTE Eötvös Loránd University</Company>
+	    <Copyright>Copyright © ELTE Eötvös Loránd University 2025</Copyright>
+	    <Description>Tool for performing code metrics analysis on C# projects.</Description>
+	    <RepositoryUrl>https://github.com/petercsaszar/code-metrics</RepositoryUrl>
+	    <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.12.0" />
+      <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.13.0" />
       <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
     </ItemGroup>
 
