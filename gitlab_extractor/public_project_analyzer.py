@@ -55,10 +55,11 @@ def clone_repo(repo_url):
 
     return repo_path
 
-def get_spaced_commits(repo_path, num_commits=3, skip_initial=2):
+def get_spaced_commits(repo_path, num_commits=4, skip_initial=3):
     """Return N spaced commits across repo history, skipping the first few trivial ones."""
     repo = git.Repo(repo_path)
-    all_commits = list(repo.iter_commits('master', reverse=True))  # oldest to newest
+    default_branch = repo.head.name
+    all_commits = list(repo.iter_commits(default_branch, reverse=True))  # oldest to newest
 
     if len(all_commits) <= num_commits + skip_initial:
         # If not enough commits to skip and space, just take what we can

@@ -12,7 +12,7 @@ namespace CodeMetricsAnalyzer.Analyzers.Diagnostics
         public static readonly DiagnosticDescriptor BumpyRoadRule = new DiagnosticDescriptor(
             id: DiagnosticIdentifiers.BumpyRoad,
             title: "Bumpy Road Code Smell",
-            messageFormat: "Method '{0}' has a high bumpy road score ({1:F2}).",
+            messageFormat: "Method '{0}' has a high bumpy road score ({1:F2})",
             category: "CodeMetrics",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,

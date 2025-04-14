@@ -68,6 +68,32 @@ def checkout_commit(repo_path, commit_id):
     print(f"Checked out commit {commit_id}")
 
 
+def run_analyzer_subprocess(solution_path, project_path):
+    """Run analyzer subprocess."""
+    analyze_command = [
+        "dotnet", "run", "--project", project_path, "analyze", solution_path
+    ]
+    
+    result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+    match_bumpy = re.search(r"(\d+)\s+CMA001", result.stdout)
+    match_fpc = re.search(r"(\d+)\s+CMA002", result.stdout)
+    match_lcom5 = re.search(r"(\d+)\s+CMA003", result.stdout)
+
+    bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
+    fpc_score = int(match_fpc.group(1)) if match_fpc else 0
+    lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
+
+    if "diagnostics found" not in result.stdout and "diagnostic found" not in result.stdout:
+        print(f"❌ Error running analyzer: {result.stdout}")
+
+    formatted_result = {
+        "bumpy_score": bumpy_score,
+        "fpc_score": fpc_score,
+        "lcom5_score": lcom5_score
+    }
+
+    return formatted_result
+
 def run_analyzers(repo_path):
     """Run the roslyn analyzers."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
@@ -78,40 +104,20 @@ def run_analyzers(repo_path):
 
     print(f"🚀 Running analyzers for {repo_path} ...")
 
-    build_command = [
-        "dotnet", "build", solution_path
-    ]
-    
-    analyze_command = [
-        "dotnet", "run", "--project", project_path, "analyze", solution_path
-    ]
-
     try:
-        subprocess.run(build_command, capture_output=True, text=True, check=True)
-        result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
-        match_bumpy = re.search(r"(\d+)\s+CMA001", result.stdout)
-        match_fpc = re.search(r"(\d+)\s+CMA002", result.stdout)
-        match_lcom5 = re.search(r"(\d+)\s+CMA003", result.stdout)
-
-        bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
-        fpc_score = int(match_fpc.group(1)) if match_fpc else 0
-        lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
-
-        if "diagnostics found" not in result.stdout or "diagnostic found" not in result.stdout:
-            print(f"❌ Error running analyzer: {result.stdout}")
-
-        formatted_result = {
-            "bumpy_score": bumpy_score,
-            "fpc_score": fpc_score,
-            "lcom5_score": lcom5_score
-        }
-
-        return formatted_result
+        return run_analyzer_subprocess(solution_path, project_path)
 
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error running analyzer: {e}")
-        return None
+        try:
+            build_command = [
+            "dotnet", "build", solution_path
+            ]
+            subprocess.run(build_command, capture_output=True, text=True, check=True)
+            return run_analyzer_subprocess(solution_path, project_path)
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Error running analyzer: {e}")
+            return None
 
 
 def analyze_milestone(milestone_keywords = None):
@@ -133,7 +139,7 @@ def analyze_milestone(milestone_keywords = None):
         repo_path = clone_repo(project_id)
         commit_id = project_data.get("last_commit_id")
 
-        if not commit_id:
+        if not commit_id or not repo_path:
             continue
 
         checkout_commit(repo_path, commit_id)

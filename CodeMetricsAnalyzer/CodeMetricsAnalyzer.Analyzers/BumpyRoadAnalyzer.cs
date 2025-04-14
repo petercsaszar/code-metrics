@@ -44,7 +44,12 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             if (bumpyRoadMetric > _config.BumpyRoadAnalysis.BumpynessThreshold) // threshold
             {
-                ReportDiagnostics(context, DiagnosticDescriptors.BumpyRoadRule, methodDeclaration.Identifier.GetLocation(), bumpyRoadMetric);
+                ReportDiagnostics(
+                    context, 
+                    DiagnosticDescriptors.BumpyRoadRule, 
+                    methodDeclaration.Identifier.GetLocation(), 
+                    methodDeclaration.Identifier.Text, 
+                    bumpyRoadMetric);
             }
         }
 
