@@ -2,7 +2,7 @@
   "profiles": {
     "CodeMetricsAnalyzer": {
       "commandName": "Project",
-      "commandLineArgs": "analyze C:\\Users\\csasz\\Documents\\git_projects\\OpenRA\\OpenRA.sln --output output.xml"
+      "commandLineArgs": "analyze Soulution.sln --output output.xml"
     }
   }
 }

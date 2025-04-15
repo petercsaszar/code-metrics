@@ -84,7 +84,7 @@ def run_analyzer_subprocess(solution_path, project_path):
     lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
 
     if "diagnostics found" not in result.stdout and "diagnostic found" not in result.stdout:
-        print(f"❌ Error running analyzer: {result.stdout}")
+        raise subprocess.CalledProcessError(returncode=result.returncode, cmd=result.args, output=result.stdout)
 
     formatted_result = {
         "bumpy_score": bumpy_score,
@@ -173,7 +173,7 @@ def find_solution_file(repo_path):
     """Recursively searches for a .sln file in the given repository directory."""
     for root, _, files in os.walk(repo_path):
         for file in files:
-            if file.endswith(".sln"):
+            if file.endswith(".sln") or file.endswith(".slnx"):
                 return os.path.join(root, file)
             
     # Check if it's a Unity project
