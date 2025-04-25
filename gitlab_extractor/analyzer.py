@@ -5,6 +5,8 @@ import subprocess
 import git
 import yaml
 import requests
+import xml.etree.ElementTree as ET
+from glob import glob
 from milestone_commit_finder import get_milestone_commits
 
 # === Load Configuration ===
@@ -20,6 +22,7 @@ CLONE_DIR = config["project"]["clone_dir"]
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
 UNITY_PATH = config["analyzer"]["unity_path"]
+UNITY_VERSION = config["analyzer"]["unity_version"]
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
 
@@ -67,9 +70,108 @@ def checkout_commit(repo_path, commit_id):
     repo.git.checkout(commit_id, force=True)
     print(f"Checked out commit {commit_id}")
 
+def add_metrics_package_to_all_projects(repo_path):
+    """Adds Microsoft.CodeAnalysis.Metrics to all .csproj files in the repo."""
+    print("📦 Adding Microsoft.CodeAnalysis.Metrics to all projects...")
 
-def run_analyzer_subprocess(solution_path, project_path):
-    """Run analyzer subprocess."""
+    for root, dirs, files in os.walk(repo_path):
+        for file in files:
+            if file.endswith(".csproj"):
+                project_path = os.path.join(root, file)
+                print(f"➡️ Adding package to {project_path}")
+                try:
+                    subprocess.run(["dotnet", "add", project_path, "package", "Microsoft.CodeAnalysis.Metrics"],
+                                   check=True, capture_output=True, text=True)
+                except subprocess.CalledProcessError as e:
+                    print(f"❌ Failed to add package to {project_path}: {e.stderr or e.stdout}")
+
+def aggregate_project_builtin_metrics(metrics_files):
+    """Aggregate and average project metrics from multiple metrics.xml files."""
+    sum_metrics = {
+        "MaintainabilityIndex": 0,
+        "CyclomaticComplexity": 0,
+        "ClassCoupling": 0,
+        "DepthOfInheritance": 0,
+    }
+
+    total_metrics = {
+        "SourceLines": 0,
+        "ExecutableLines": 0,
+    }
+
+    contributing_projects = 0
+
+    for file in metrics_files:
+        try:
+            tree = ET.parse(file)
+            root = tree.getroot()
+            metrics = root.find(".//Metrics")
+            if metrics is None:
+                continue
+
+            for metric in metrics.findall("Metric"):
+                name = metric.attrib.get("Name")
+                value = metric.attrib.get("Value")
+                if name in sum_metrics:
+                    sum_metrics[name] += int(value)
+                elif name in total_metrics:
+                    total_metrics[name] += int(value)
+
+            contributing_projects += 1
+
+        except Exception as e:
+            print(f"⚠️ Error parsing {file}: {e}")
+
+    if contributing_projects == 0:
+        return None
+
+    # Compute averages
+    averaged_metrics = {
+        name: round(value / contributing_projects)
+        for name, value in sum_metrics.items()
+    }
+
+    # Merge totals
+    averaged_metrics.update(total_metrics)
+
+    return averaged_metrics
+
+
+
+def run_builtin_roslyn_metrics(repo_path):
+    """Run Roslyn built-in metrics analyzer."""
+    project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
+    solution_path = find_solution_file(repo_path)
+    if not solution_path:
+        print("❌ No solution found.")
+        return None
+
+    print(f"🚀 Running built-in Roslyn metrics for {repo_path} ...")
+    
+    add_metrics_package_to_all_projects(repo_path)
+
+    try:        
+        build_command = [
+        "dotnet", "build", solution_path
+        ]
+        subprocess.run(build_command, capture_output=True, text=True, check=True)
+        
+        analyze_command = [
+        "dotnet", "msbuild", solution_path, "/t:Metrics"
+        ]
+        subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+    
+        # Find all generated *.Metrics.xml files under this solution's directory
+        metrics_files = glob(os.path.join(repo_path, "**", "*.Metrics.xml"), recursive=True)
+        print(f"🔍 Found {len(metrics_files)} metrics files.")
+
+        aggregated = aggregate_project_builtin_metrics(metrics_files)
+        if aggregated:
+            return aggregated
+    
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error running analyzer: {e}")
+        return None
    
 
 def run_analyzers(repo_path):
@@ -137,23 +239,35 @@ def analyze_milestone(milestone_keywords = None):
     results = {}
 
     for project_id, project_data in commit_data.items():
-        repo_path = clone_repo(project_id)
-        commit_id = project_data.get("last_commit_id")
+        try:
+            repo_path = clone_repo(project_id)
+            commit_id = project_data.get("last_commit_id")
 
-        if not commit_id or not repo_path:
-            continue
+            if not commit_id or not repo_path:
+                continue
 
-        checkout_commit(repo_path, commit_id)
-        analysis_result = run_analyzers(repo_path)
+            checkout_commit(repo_path, commit_id)
+            analysis_result = run_analyzers(repo_path)
+            builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path)
 
-        if analysis_result:
-            results[project_id] = {
-                "project_id": project_id,
-                "commit_id": commit_id,
-                "bumpy_score": analysis_result["bumpy_score"],
-                "fpc_score": analysis_result["fpc_score"],
-                "lcom5_score": analysis_result["lcom5_score"]
-            }
+            if analysis_result:
+                results[project_id] = {
+                    "project_id": project_id,
+                    "commit_id": commit_id,
+                    "bumpy_score": analysis_result["bumpy_score"],
+                    "fpc_score": analysis_result["fpc_score"],
+                    "lcom5_score": analysis_result["lcom5_score"],
+                    "lcom4_score": analysis_result["lcom4_score"],
+                    "MaintainabilityIndex": builtin_analysis_result["MaintainabilityIndex"],
+                    "CyclomaticComplexity": builtin_analysis_result["CyclomaticComplexity"],
+                    "ClassCoupling": builtin_analysis_result["ClassCoupling"],
+                    "DepthOfInheritance": builtin_analysis_result["DepthOfInheritance"],
+                    "SourceLines": builtin_analysis_result["SourceLines"],
+                    "ExecutableLines": builtin_analysis_result["ExecutableLines"],
+                }
+        except Exception as e:
+            print(f"❌ Error analyzing project {project_id}: {e}")
+
 
     return results
 
@@ -196,6 +310,7 @@ def find_solution_file(repo_path):
 
 def generate_unity_solution(repo_path):
     """Uses Unity to generate a Visual Studio solution."""
+    update_unity_project_version(repo_path)
     command = [
         UNITY_PATH, "-batchmode", "-quit", "-nographics", "-projectPath", repo_path, "-executeMethod", "UnityEditor.SyncVS.SyncSolution"
     ]
@@ -204,6 +319,19 @@ def generate_unity_solution(repo_path):
         print("✅ Unity solution file generated.")
     except subprocess.CalledProcessError as e:
         print(f"❌ Error generating Unity solution: {e}")
+
+def update_unity_project_version(project_path):
+    """Update the Unity Editor version"""
+    version_file = os.path.join(project_path, "ProjectSettings", "ProjectVersion.txt")
+
+    if not os.path.isfile(version_file):
+        print(f"[ERROR] Couldn't find ProjectVersion.txt at: {version_file}")
+        return
+
+    with open(version_file, "w") as f:
+        f.write(f"m_EditorVersion: {UNITY_VERSION}\n")
+
+    print(f"[OK] Updated Unity version to {UNITY_VERSION} in {version_file}")
 
 
 if __name__ == "__main__":
