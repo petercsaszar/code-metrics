@@ -32,11 +32,11 @@ public class LCOM5Analyzer(AnalyzerConfiguration config) : ClassAnalyzer(config)
         if (methods.Count < _config.LCOM5Analysis.MinimumMethodCount || fields.Count < _config.LCOM5Analysis.MinimumFieldCount)
             return;
 
-        Dictionary<IMethodSymbol, HashSet<IFieldSymbol>> methodAccesses = new();
+        Dictionary<IMethodSymbol, HashSet<IFieldSymbol>> methodAccesses = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
 
         foreach (var method in methods)
         {
-            var accessedFields = new HashSet<IFieldSymbol>();
+            var accessedFields = new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
 
             foreach (var syntaxRef in method.DeclaringSyntaxReferences)
             {
@@ -83,11 +83,24 @@ public class LCOM5Analyzer(AnalyzerConfiguration config) : ClassAnalyzer(config)
             methodAccesses[method] = accessedFields;
         }
 
-        int K = methods.Count;
-        int L = fields.Count;
-        double A = methodAccesses.Values.Sum(set => set.Count);
+        int k = methods.Count;
+        int l = fields.Count;
+        double a = 0;
 
-        double LCOM5 = (A-K*L) / (L-K*L);
+        if (methodAccesses.Count > 0)
+        {
+            var commonFields = new HashSet<IFieldSymbol>(methodAccesses.Values.First(), SymbolEqualityComparer.Default);
+
+            foreach (var fieldsSet in methodAccesses.Values.Skip(1))
+            {
+                commonFields.IntersectWith(fieldsSet);
+            }
+
+            a = commonFields.Count;
+        }
+
+        double LCOM5 = 1 - (a / l);
+
         //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
 
         if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold)

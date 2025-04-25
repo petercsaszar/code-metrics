@@ -9,7 +9,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Locator" Version="1.9.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.13.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Metrics" Version="4.0.0-beta1.25155.1" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="4.13.0" />
   </ItemGroup>
 

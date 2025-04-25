@@ -8,12 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="AnalyzerReleases.Shipped.md" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Metrics" Version="4.0.0-beta1.25155.1" />
   </ItemGroup>
 
 </Project>

@@ -2,7 +2,7 @@
   "profiles": {
     "CodeMetricsAnalyzer": {
       "commandName": "Project",
-      "commandLineArgs": "analyze Soulution.sln --output output.xml"
+      "commandLineArgs": "analyze Solution.sln --output output.xml"
     }
   }
 }

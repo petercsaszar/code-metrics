@@ -55,26 +55,47 @@ def clone_repo(repo_url):
 
     return repo_path
 
-def get_spaced_commits(repo_path, num_commits=5, skip_initial=3, last_x=300):
-    """Return N spaced commits across repo history, skipping the first few trivial ones."""
+def is_dotnet_core_project(repo, commit):
+    """Check if a commit uses .NET Core in any .csproj file."""
+    try:
+        tree = commit.tree
+        for blob in tree.traverse():
+            if blob.path.endswith(".csproj"):
+                contents = blob.data_stream.read().decode(errors="ignore")
+                if "netcoreapp" in contents.lower() or "net5.0" in contents.lower() or "net6.0" in contents.lower() or "net7.0" in contents.lower() or "net8.0" in contents.lower()or "net9.0" in contents.lower():
+                    return True
+    except Exception as e:
+        print(f"Error reading commit {commit.hexsha}: {e}")
+    return False
+
+def get_spaced_commits(repo_path, num_commits=5):
+    """Return N spaced commits after the project starts using .NET Core."""
     repo = git.Repo(repo_path)
-    default_branch = repo.remotes.origin.refs
+    default_branch = repo.head.reference
     all_commits = list(repo.iter_commits(default_branch, reverse=True))  # oldest to newest
 
-    if len(all_commits) <= num_commits + skip_initial:
-        # If not enough commits to skip and space, just take what we can
-        return all_commits[skip_initial:]
+    # Find first .NET Core commit
+    core_start_index = None
+    for i, commit in enumerate(all_commits):
+        if is_dotnet_core_project(repo, commit):
+            core_start_index = i
+            break
 
-    if len(all_commits) > skip_initial + last_x:
-        commits = all_commits[-last_x:]
-    else:
-        commits = all_commits[skip_initial:]
+    if core_start_index is None:
+        print(f"⚠ Skipping project in {repo_path} - no .NET Core usage found.")
+        return []
 
-    step = len(commits) // (num_commits - 1)
-    selected = [commits[0].hexsha]  # "early" meaningful commit
+    filtered_commits = all_commits[core_start_index:]
+
+    if len(filtered_commits) <= num_commits:
+        return [commit.hexsha for commit in filtered_commits]
+
+    step = len(filtered_commits) // (num_commits - 1)
+    selected = [filtered_commits[0].hexsha]
     for i in range(1, num_commits - 1):
-        selected.append(commits[i * step].hexsha)
-    selected.append(commits[-1].hexsha)  # latest commit
+        selected.append(filtered_commits[i * step].hexsha)
+    selected.append(filtered_commits[-1].hexsha)
+
     return selected
 
 

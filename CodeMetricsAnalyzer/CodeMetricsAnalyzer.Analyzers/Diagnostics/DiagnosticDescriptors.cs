@@ -32,11 +32,21 @@ namespace CodeMetricsAnalyzer.Analyzers.Diagnostics
         public static readonly DiagnosticDescriptor LCOM5Rule = new DiagnosticDescriptor(
             id: DiagnosticIdentifiers.LCOM5,
             title: "Lack of Cohesion of Methods (LCOM5)",
-            messageFormat: "Class '{0}' has a high LCOM5 score ({1:F2}).",
+            messageFormat: "Class '{0}' has a high LCOM5 score ({1:F2})",
             category: "CodeMetrics",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,
             description: "This class has a high LCOM5 score, indicating low cohesion. Consider refactoring."
+        );
+
+        public static readonly DiagnosticDescriptor LCOM4Rule = new DiagnosticDescriptor(
+            id: DiagnosticIdentifiers.LCOM4,
+            title: "Lack of Cohesion of Methods (LCOM4)",
+            messageFormat: "Class '{0}' has a high LCOM4 score ({1:F2})",
+            category: "CodeMetrics",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: "This class has a high LCOM4 score, indicating low cohesion. Consider refactoring."
         );
     }
 }
