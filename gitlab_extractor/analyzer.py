@@ -195,10 +195,10 @@ def run_analyzers(repo_path):
         ]
     
         result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
-        match_bumpy = re.search(r"(\d+)\s+CMA001", result.stdout)
-        match_fpc = re.search(r"(\d+)\s+CMA002", result.stdout)
-        match_lcom5 = re.search(r"(\d+)\s+CMA003", result.stdout)
-        match_lcom4 = re.search(r"(\d+)\s+CMA004", result.stdout)
+        match_bumpy = re.search(r"(\d+)\s+CMA0001", result.stdout)
+        match_fpc = re.search(r"(\d+)\s+CMA0002", result.stdout)
+        match_lcom5 = re.search(r"(\d+)\s+CMA0004", result.stdout)
+        match_lcom4 = re.search(r"(\d+)\s+CMA0003", result.stdout)
 
         bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
         fpc_score = int(match_fpc.group(1)) if match_fpc else 0

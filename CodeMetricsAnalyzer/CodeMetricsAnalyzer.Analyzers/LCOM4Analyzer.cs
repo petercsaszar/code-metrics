@@ -1,5 +1,4 @@
 ﻿using System.Collections.Immutable;
-using System.Data;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
