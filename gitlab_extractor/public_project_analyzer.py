@@ -71,8 +71,8 @@ def is_dotnet_core_project(repo, commit):
 def get_spaced_commits(repo_path, num_commits=5):
     """Return N spaced commits after the project starts using .NET Core."""
     repo = git.Repo(repo_path)
-    default_branch = repo.head.reference
-    all_commits = list(repo.iter_commits(default_branch, reverse=True))  # oldest to newest
+    head_commit = repo.head.commit
+    all_commits = list(repo.iter_commits(head_commit, reverse=True))  # oldest to newest
 
     # Find first .NET Core commit
     core_start_index = None
@@ -121,7 +121,11 @@ def analyze_projects():
                     "repo_url": project,
                     "bumpy_score": analysis_result.get("bumpy_score"),
                     "fpc_score": analysis_result.get("fpc_score"),
-                    "lcom5_score": analysis_result.get("lcom5_score")
+                    "lcom5_score": analysis_result.get("lcom5_score"),
+                    "lcom4_score": analysis_result.get("lcom4_score"),
+                    "MaintainabilityIndex": analysis_result.get("MaintainabilityIndex"),
+                    "CyclomaticComplexity": analysis_result.get("CyclomaticComplexity"),
+                    "ClassCoupling": analysis_result.get("ClassCoupling")
                 }
             i += 1
 
