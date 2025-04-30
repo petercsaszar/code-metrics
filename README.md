@@ -5,10 +5,11 @@ A tool for downloading gitlab projects from groups, finding milestones and then 
 ## Currently implemented metrics
 - Bumpy Road Code Smell
 - Function parameter count
+- LCOM4 metrics
 - LCOM5 metrics
 
 ## Usage
 See the subfolders:
 
 - Code Metrics Analyzer: `CodeMetricsAnalyzer/`
-- Automated gitlab downloader and analyzer: `gitlab_extractor/`
+- Automated git downloader and analyzer: `gitlab_extractor/`
