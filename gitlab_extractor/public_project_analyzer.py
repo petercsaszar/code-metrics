@@ -162,12 +162,6 @@ def analyze_projects():
                         "fpc_score": analysis_result.get("fpc_score"),
                         "lcom5_score": analysis_result.get("lcom5_score"),
                         "lcom4_score": analysis_result.get("lcom4_score"),
-                    }
-
-                if builtin_analysis_result:
-                    if project_id not in results:
-                        results[project_id] = {}
-                    results[project_id][i] = {
                         "MaintainabilityIndex": builtin_analysis_result.get("MaintainabilityIndex"),
                         "CyclomaticComplexity": builtin_analysis_result.get("CyclomaticComplexity"),
                         "ClassCoupling": builtin_analysis_result.get("ClassCoupling")

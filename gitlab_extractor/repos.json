@@ -1,14 +1,13 @@
 {
     "repos": [
         {
-            "repo": "https://github.com/OpenRA/OpenRA",
+            "repo": "https://github.com/GISLab-ELTE/aegis-origin",
             "tags": [
-                "playtest-20221223",
-                "playtest-20221224",
-                "release-20231010",
-                "playtest-20241228",
-                "release-20250330"
+                "v1.0.0",
+                "v1.1.0",
+                "v1.1.1",
+                "v1.2.0"
             ]
-        }   
+        }
     ]
 }
