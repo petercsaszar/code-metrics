@@ -164,7 +164,8 @@ def analyze_projects():
                         "lcom4_score": analysis_result.get("lcom4_score"),
                         "MaintainabilityIndex": builtin_analysis_result.get("MaintainabilityIndex"),
                         "CyclomaticComplexity": builtin_analysis_result.get("CyclomaticComplexity"),
-                        "ClassCoupling": builtin_analysis_result.get("ClassCoupling")
+                        "ClassCoupling": builtin_analysis_result.get("ClassCoupling"),
+                        "SourceLines": builtin_analysis_result.get("SourceLines")
                     }
             except Exception as e:
                 print(f"⚠️ Error analyzing commit {commit} in {repo_url}: {e}")
