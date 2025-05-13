@@ -150,12 +150,15 @@ def run_builtin_roslyn_metrics(repo_path):
     
     add_metrics_package_to_all_projects(repo_path)
 
-    try:        
+    try:
         build_command = [
         "dotnet", "build", solution_path
         ]
         subprocess.run(build_command, capture_output=True, text=True, check=True)
-        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Build error: {e}. Trying to run analyzer without build.")
+    
+    try:                
         analyze_command = [
         "dotnet", "msbuild", solution_path, "/t:Metrics"
         ]
