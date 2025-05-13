@@ -3,7 +3,7 @@ import json
 import os
 import git
 from urllib.parse import urlparse
-from analyzer import run_analyzers, checkout_commit
+from analyzer import run_analyzers, run_builtin_roslyn_metrics, checkout_commit
 
 # === Load Configuration ===
 with open("config.yml", "r") as file:
@@ -112,6 +112,7 @@ def analyze_projects():
         for commit in commits:
             checkout_commit(repo_path, commit)
             analysis_result = run_analyzers(repo_path)
+            builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path)
             if analysis_result:
                 repo_name = get_repo_name(project)
                 project_id = repo_name if repo_name else project
@@ -123,9 +124,10 @@ def analyze_projects():
                     "fpc_score": analysis_result.get("fpc_score"),
                     "lcom5_score": analysis_result.get("lcom5_score"),
                     "lcom4_score": analysis_result.get("lcom4_score"),
-                    "MaintainabilityIndex": analysis_result.get("MaintainabilityIndex"),
-                    "CyclomaticComplexity": analysis_result.get("CyclomaticComplexity"),
-                    "ClassCoupling": analysis_result.get("ClassCoupling")
+                    "MaintainabilityIndex": builtin_analysis_result.get("MaintainabilityIndex"),
+                    "CyclomaticComplexity": builtin_analysis_result.get("CyclomaticComplexity"),
+                    "ClassCoupling": builtin_analysis_result.get("ClassCoupling"),
+                    "SourceLines": builtin_analysis_result.get("SourceLines")
                 }
             i += 1
 

@@ -189,7 +189,10 @@ def run_analyzers(repo_path):
         "dotnet", "build", solution_path
         ]
         subprocess.run(build_command, capture_output=True, text=True, check=True)
-        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Build error: {e}. Trying to run analyzer without build.")
+
+    try:        
         analyze_command = [
         "dotnet", "run", "--project", project_path, "analyze", solution_path
         ]

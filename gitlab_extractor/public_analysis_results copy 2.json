@@ -1,0 +1,58 @@
+{
+    "GISLab-ELTE_aegis-origin": {
+        "1": {
+            "repo_url": {
+                "repo": "https://github.com/GISLab-ELTE/aegis-origin",
+                "tags": [
+                    "v1.0.0",
+                    "v1.1.0",
+                    "v1.1.1",
+                    "v1.2.0"
+                ]
+            },
+            "bumpy_score": 63,
+            "fpc_score": 545,
+            "lcom5_score": 460,
+            "lcom4_score": 89,
+            "MaintainabilityIndex": 73,
+            "CyclomaticComplexity": 719,
+            "ClassCoupling": 79
+        },
+        "2": {
+            "repo_url": {
+                "repo": "https://github.com/GISLab-ELTE/aegis-origin",
+                "tags": [
+                    "v1.0.0",
+                    "v1.1.0",
+                    "v1.1.1",
+                    "v1.2.0"
+                ]
+            },
+            "bumpy_score": 63,
+            "fpc_score": 545,
+            "lcom5_score": 460,
+            "lcom4_score": 89,
+            "MaintainabilityIndex": 73,
+            "CyclomaticComplexity": 719,
+            "ClassCoupling": 79
+        },
+        "3": {
+            "repo_url": {
+                "repo": "https://github.com/GISLab-ELTE/aegis-origin",
+                "tags": [
+                    "v1.0.0",
+                    "v1.1.0",
+                    "v1.1.1",
+                    "v1.2.0"
+                ]
+            },
+            "bumpy_score": 67,
+            "fpc_score": 546,
+            "lcom5_score": 478,
+            "lcom4_score": 94,
+            "MaintainabilityIndex": 73,
+            "CyclomaticComplexity": 686,
+            "ClassCoupling": 77
+        }
+    }
+}
