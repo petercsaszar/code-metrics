@@ -12,7 +12,7 @@ project:
   clone_dir: "./repos"              # Directory where repositories will be cloned
 
 public_analyzer:
-  repository_list: "repos.txt"      # List of public repos to analyze
+  repository_list: "repos.json"      # List of , public repos to analyze
   clone_dir: "./public_repos"              # Directory where repositories will be cloned
 
 analyzer:
