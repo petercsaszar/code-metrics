@@ -1,0 +1,35 @@
+{
+    "repos": [
+        {
+            "repo": "https://github.com/jellyfin/jellyfin",
+            "tags": [
+                "v10.6.0",
+                "v10.7.7",
+                "v10.8.0",
+                "v10.8.8",
+                "v10.8.13",
+                "v10.10.0",
+                "v10.10.7"
+            ]
+        },
+        {
+            "repo": "https://github.com/OpenRA/OpenRA",
+            "tags": [
+                "release-20200503",
+                "release-20210321",
+                "release-20230225",
+                "release-20231010",
+                "release-20250330"
+            ]
+        },
+        {
+            "repo": "https://github.com/GISLab-ELTE/aegis-origin",
+            "tags": [
+                "v1.0.0",
+                "v1.1.0",
+                "v1.1.1",
+                "v1.2.0"
+            ]
+        }
+    ]
+}

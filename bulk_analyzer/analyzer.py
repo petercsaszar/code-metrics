@@ -68,6 +68,12 @@ def checkout_commit(repo_path, commit_id):
     """Checkout the specific commit."""
     repo = git.Repo(repo_path)
     repo.git.checkout(commit_id, force=True)
+    
+    try:
+        subprocess.run(["git", "clean", "-xdf"], cwd=repo_path, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Failed to achieve wipe on git repository: {e.stderr or e.stdout}")
+
     print(f"Checked out commit {commit_id}")
 
 def add_metrics_package_to_all_projects(repo_path):
@@ -136,8 +142,6 @@ def aggregate_project_builtin_metrics(metrics_files):
 
     return averaged_metrics
 
-
-
 def run_builtin_roslyn_metrics(repo_path):
     """Run Roslyn built-in metrics analyzer."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
@@ -150,16 +154,24 @@ def run_builtin_roslyn_metrics(repo_path):
     
     add_metrics_package_to_all_projects(repo_path)
 
-    try:        
+    try:
+        clean_command = [
+            "dotnet", "clean", solution_path
+        ]
+        subprocess.run(clean_command, capture_output=True, text=True, check=False)
+
         build_command = [
         "dotnet", "build", solution_path
         ]
         subprocess.run(build_command, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Build error: {e}. Trying to run analyzer without build.")
         
+    try:               
         analyze_command = [
-        "dotnet", "msbuild", solution_path, "/t:Metrics"
+        "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
         ]
-        subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+        subprocess.run(analyze_command, capture_output=True, text=True, check=False)
     
         # Find all generated *.Metrics.xml files under this solution's directory
         metrics_files = glob(os.path.join(repo_path, "**", "*.Metrics.xml"), recursive=True)
@@ -185,6 +197,11 @@ def run_analyzers(repo_path):
     print(f"🚀 Running analyzers for {repo_path} ...")
 
     try:
+        clean_command = [
+            "dotnet", "clean", solution_path
+        ]
+        subprocess.run(clean_command, capture_output=True, text=True, check=False)
+
         build_command = [
         "dotnet", "build", solution_path
         ]
@@ -194,10 +211,11 @@ def run_analyzers(repo_path):
 
     try:        
         analyze_command = [
-        "dotnet", "run", "--project", project_path, "analyze", solution_path
+        "dotnet", "run", "--project", project_path, "analyze", solution_path, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
         ]
     
         result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+
         match_bumpy = re.search(r"(\d+)\s+CMA0001", result.stdout)
         match_fpc = re.search(r"(\d+)\s+CMA0002", result.stdout)
         match_lcom5 = re.search(r"(\d+)\s+CMA0004", result.stdout)

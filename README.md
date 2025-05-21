@@ -12,4 +12,4 @@ A tool for downloading gitlab projects from groups, finding milestones and then 
 See the subfolders:
 
 - Code Metrics Analyzer: `CodeMetricsAnalyzer/`
-- Automated git downloader and analyzer: `gitlab_extractor/`
+- Automated git downloader and analyzer: `bulk_analyzer/`

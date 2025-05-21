@@ -83,9 +83,18 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
 
         private void CreateWorkspace()
         {
+            // TODO export to config
+            var properties = new Dictionary<string, string>
+            {
+                ["RunAnalyzers"] = "false",
+                ["WarningsAsErrors"] = "",
+                ["WarningsNotAsErrors"] = "NU1902;NU1903",
+                ["NoWarn"] = "NU1902;NU1903",
+            };
+
             MSBuildLocator.RegisterDefaults();
 
-            _workspace = MSBuildWorkspace.Create();
+            _workspace = MSBuildWorkspace.Create(properties);
         }
 
         private void CheckForWorkspaceDiagnostics()
@@ -127,6 +136,9 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 {
                     throw new Exception();
                 }
+
+                if (project.Language != LanguageNames.CSharp)
+                    continue;
 
                 var result = await AnalyzeProjectAsync(project, analyzers, cancellationToken);
 
