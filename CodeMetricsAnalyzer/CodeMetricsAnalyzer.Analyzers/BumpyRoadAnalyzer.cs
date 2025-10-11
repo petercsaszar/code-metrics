@@ -1,4 +1,5 @@
-﻿using System.Collections.Immutable;
+﻿using System.Collections.Generic;
+using System.Collections.Immutable;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
@@ -10,8 +11,12 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class BumpyRoadAnalyzer(AnalyzerConfiguration config) : MethodAnalyzer(config)
+    public class BumpyRoadAnalyzer: MethodAnalyzer
     {
+        public BumpyRoadAnalyzer(AnalyzerConfiguration config) : base(config)
+        {
+        }
+
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.BumpyRoadRule];
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)

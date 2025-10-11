@@ -1,6 +1,9 @@
-﻿namespace CodeMetricsAnalyzer.ResultExporter;
+﻿using System.Threading.Tasks;
 
-public interface IResultExporter
+namespace CodeMetricsAnalyzer.ResultExporter
 {
-    Task ExportResultsAsync(string path, ResultExporterArguments arguments, CancellationToken cancellationToken = default);
+    public interface IResultExporter
+    {
+        Task ExportResultsAsync(string path, ResultExporterArguments arguments, CancellationToken cancellationToken = default);
+    }
 }

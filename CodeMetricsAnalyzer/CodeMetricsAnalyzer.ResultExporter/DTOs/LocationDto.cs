@@ -1,7 +1,8 @@
-﻿namespace CodeMetricsAnalyzer.ResultExporter.DTOs;
-
-public class LocationDto
+﻿namespace CodeMetricsAnalyzer.ResultExporter.DTOs
 {
-    public int Line { get; set; }
-    public int Character { get; set; }
+    public class LocationDto
+    {
+        public int Line { get; set; }
+        public int Character { get; set; }
+    }
 }

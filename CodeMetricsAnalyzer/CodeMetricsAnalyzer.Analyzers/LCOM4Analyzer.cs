@@ -7,119 +7,125 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace CodeMetricsAnalyzer.Analyzers;
-
-[DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class LCOM4Analyzer(AnalyzerConfiguration config) : ClassAnalyzer(config)
+namespace CodeMetricsAnalyzer.Analyzers
 {
-    public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.LCOM4Rule];
-
-    protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
+    [DiagnosticAnalyzer(LanguageNames.CSharp)]
+    public class LCOM4Analyzer : ClassAnalyzer
     {
-        var classDecl = (ClassDeclarationSyntax)context.Node;
-        var semanticModel = context.SemanticModel;
-        var classSymbol = semanticModel.GetDeclaredSymbol(classDecl);
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
+            => ImmutableArray.Create(DiagnosticDescriptors.LCOM4Rule);
 
-        if (classSymbol == null) return;
-
-        var methods = classSymbol.GetMembers().OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic)
-            .ToList();
-
-        var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
-
-        if (methods.Count < _config.LCOM4Analysis.MinimumMethodCount || fields.Count < _config.LCOM4Analysis.MinimumFieldCount)
-            return;
-
-        var methodGraph = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
-        var fieldAccessMap = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
-
-        foreach (var method in methods)
+        public LCOM4Analyzer(AnalyzerConfiguration config) : base(config)
         {
-            var connected = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-            var accessedFields = new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
+        }
 
-            foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+        protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
+        {
+            var classDecl = (ClassDeclarationSyntax)context.Node;
+            var semanticModel = context.SemanticModel;
+            var classSymbol = semanticModel.GetDeclaredSymbol(classDecl);
+
+            if (classSymbol == null) return;
+
+            var methods = classSymbol.GetMembers().OfType<IMethodSymbol>()
+                .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic)
+                .ToList();
+
+            var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
+
+            if (methods.Count < _config.LCOM4Analysis.MinimumMethodCount || fields.Count < _config.LCOM4Analysis.MinimumFieldCount)
+                return;
+
+            var methodGraph = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
+            var fieldAccessMap = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
+
+            foreach (var method in methods)
             {
-                var methodNode = syntaxRef.GetSyntax() as MethodDeclarationSyntax;
-                if (methodNode?.Body == null && methodNode?.ExpressionBody == null) continue;
+                var connected = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+                var accessedFields = new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
 
-                var body = methodNode.Body ??
-                           SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(methodNode.ExpressionBody!.Expression));
-
-                SyntaxNode? analysisTarget = methodNode.Body ?? (SyntaxNode?)methodNode.ExpressionBody?.Expression;
-
-                if (analysisTarget == null || !semanticModel.SyntaxTree.Equals(analysisTarget.SyntaxTree))
-                    continue;
-
-                var dataFlow = semanticModel.AnalyzeDataFlow(analysisTarget);
-
-                foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
+                foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
-                    if (symbol is IFieldSymbol fieldSymbol)
-                        accessedFields.Add(fieldSymbol);
+                    var methodNode = syntaxRef.GetSyntax() as MethodDeclarationSyntax;
+                    if (methodNode?.Body == null && methodNode?.ExpressionBody == null) continue;
+
+                    var body = methodNode.Body ??
+                               SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(methodNode.ExpressionBody.Expression));
+
+                    SyntaxNode analysisTarget = methodNode.Body ?? (SyntaxNode)methodNode.ExpressionBody?.Expression;
+
+                    if (analysisTarget == null || !semanticModel.SyntaxTree.Equals(analysisTarget.SyntaxTree))
+                        continue;
+
+                    var dataFlow = semanticModel.AnalyzeDataFlow(analysisTarget);
+
+                    foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
+                    {
+                        if (symbol is IFieldSymbol fieldSymbol)
+                            accessedFields.Add(fieldSymbol);
+                    }
+
+                    var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
+                    foreach (var invocation in invocations)
+                    {
+                        var called = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+                        if (called != null && methods.Contains(called) && !SymbolEqualityComparer.Default.Equals(called, method))
+                        {
+                            connected.Add(called);
+                        }
+                    }
                 }
 
-                var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
-                foreach (var invocation in invocations)
+                fieldAccessMap[method] = accessedFields;
+                methodGraph[method] = connected;
+            }
+
+            // Add connections via shared field access
+            foreach (var m1 in methods)
+            {
+                foreach (var m2 in methods)
                 {
-                    var called = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-                    if (called != null && methods.Contains(called) && !SymbolEqualityComparer.Default.Equals(called, method))
+                    if (SymbolEqualityComparer.Default.Equals(m1, m2)) continue;
+
+                    if (fieldAccessMap[m1].Overlaps(fieldAccessMap[m2]))
                     {
-                        connected.Add(called);
+                        methodGraph[m1].Add(m2);
+                        methodGraph[m2].Add(m1);
                     }
                 }
             }
 
-            fieldAccessMap[method] = accessedFields;
-            methodGraph[method] = connected;
-        }
+            // Count connected components
+            var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+            int components = 0;
 
-        // Add connections via shared field access
-        foreach (var m1 in methods)
-        {
-            foreach (var m2 in methods)
+            void DFS(IMethodSymbol node)
             {
-                if (SymbolEqualityComparer.Default.Equals(m1, m2)) continue;
-
-                if (fieldAccessMap[m1].Overlaps(fieldAccessMap[m2]))
+                if (!visited.Add(node)) return;
+                foreach (var neighbor in methodGraph[node])
                 {
-                    methodGraph[m1].Add(m2);
-                    methodGraph[m2].Add(m1);
+                    DFS(neighbor);
                 }
             }
-        }
 
-        // Count connected components
-        var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-        int components = 0;
-
-        void DFS(IMethodSymbol node)
-        {
-            if (!visited.Add(node)) return;
-            foreach (var neighbor in methodGraph[node])
+            foreach (var method in methods)
             {
-                DFS(neighbor);
+                if (!visited.Contains(method))
+                {
+                    components++;
+                    DFS(method);
+                }
             }
-        }
 
-        foreach (var method in methods)
-        {
-            if (!visited.Contains(method))
+            if (components > _config.LCOM4Analysis.CohesionThreshold)
             {
-                components++;
-                DFS(method);
+                ReportDiagnostics(
+                    context,
+                    DiagnosticDescriptors.LCOM4Rule,
+                    classDecl.Identifier.GetLocation(),
+                    classSymbol.Name,
+                    components);
             }
-        }
-
-        if (components > _config.LCOM4Analysis.CohesionThreshold)
-        {
-            ReportDiagnostics(
-                context,
-                DiagnosticDescriptors.LCOM4Rule,
-                classDecl.Identifier.GetLocation(),
-                classSymbol.Name,
-                components);
         }
     }
 }

@@ -26,7 +26,7 @@ namespace CodeMetricsAnalyzer.Analyzers.BaseAnalyzers
 
         }
 
-        protected static void ReportDiagnostics(SyntaxNodeAnalysisContext context, DiagnosticDescriptor descriptor, Location? location, params object?[]? messageArgs)
+        protected static void ReportDiagnostics(SyntaxNodeAnalysisContext context, DiagnosticDescriptor descriptor, Location location, params object?[]? messageArgs)
         {
             if (location is null || location == Location.None)
             {
@@ -35,13 +35,13 @@ namespace CodeMetricsAnalyzer.Analyzers.BaseAnalyzers
                 return;
             }
 
-            var syntaxTree = context.Compilation.SyntaxTrees.FirstOrDefault(syntaxTree => syntaxTree.FilePath == location!.SourceTree?.FilePath);
+            var syntaxTree = context.Compilation.SyntaxTrees.FirstOrDefault(syntaxTree => syntaxTree.FilePath == location.SourceTree?.FilePath);
             if (syntaxTree is null)
             {
                 return;
             }
 
-            var newLocation = Location.Create(syntaxTree, location!.SourceSpan);
+            var newLocation = Location.Create(syntaxTree, location.SourceSpan);
             var diagnostic = Diagnostic.Create(descriptor, newLocation, messageArgs);
 
             context.ReportDiagnostic(diagnostic);

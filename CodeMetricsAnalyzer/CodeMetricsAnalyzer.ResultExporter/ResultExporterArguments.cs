@@ -1,9 +1,11 @@
 ﻿using CodeMetricsAnalyzer.ResultExporter.DTOs;
+using System.Collections.Generic;
 
-namespace CodeMetricsAnalyzer.ResultExporter;
-
-public class ResultExporterArguments
+namespace CodeMetricsAnalyzer.ResultExporter
 {
-    // public string CodeMetrics { get; set; }
-    public List<ProjectDiagnosticsDto> ProjectDiagnostics { get; set; }
+    public class ResultExporterArguments
+    {
+        // public string CodeMetrics { get; set; }
+        public List<ProjectDiagnosticsDto> ProjectDiagnostics { get; set; }
+    }
 }
