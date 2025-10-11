@@ -13,13 +13,12 @@ namespace CodeMetricsAnalyzer.Analyzers
     {
         public static ImmutableArray<DiagnosticAnalyzer> CreateAnalyzers(AnalyzerConfiguration config)
         {
-            return
-            [
+            return ImmutableArray.Create<DiagnosticAnalyzer>(
                 new BumpyRoadAnalyzer(config),
                 new FunctionParameterCountAnalyzer(config),
                 new LCOM4Analyzer(config),
                 new LCOM5Analyzer(config)
-            ];
+            );
         }
     }
 }

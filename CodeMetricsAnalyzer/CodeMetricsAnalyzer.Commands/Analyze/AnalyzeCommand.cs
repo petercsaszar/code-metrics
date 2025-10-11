@@ -18,7 +18,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
     {
         private readonly AnalyzeCommandOptions _options;
         private readonly IResultExporter _resultExporter = new XmlResultExporter();
-        private MSBuildWorkspace _workspace;
+        private MSBuildWorkspace? _workspace;
 
         public AnalyzeCommand(AnalyzeCommandOptions options)
         {
@@ -68,13 +68,13 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             var isSolution = _options.Source.Extension == ".sln";
             if (isSolution)
             {
-                var solution = await _workspace.OpenSolutionAsync(_options.Source.FullName, null, cancellationToken);
+                var solution = await _workspace!.OpenSolutionAsync(_options.Source.FullName, null, cancellationToken);
                 CheckForWorkspaceDiagnostics();
                 return await AnalyzeSolutionAsync(solution, analyzers, cancellationToken);
             }
             else
             {
-                var project = await _workspace.OpenProjectAsync(_options.Source.FullName, null, cancellationToken);
+                var project = await _workspace!.OpenProjectAsync(_options.Source.FullName, null, cancellationToken);
                 CheckForWorkspaceDiagnostics();
                 var result = await AnalyzeProjectAsync(project, analyzers, cancellationToken);
                 return [result];
@@ -99,7 +99,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
 
         private void CheckForWorkspaceDiagnostics()
         {
-            if (_workspace.Diagnostics.Any(diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Failure))
+            if (_workspace!.Diagnostics.Any(diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Failure))
             {
                 throw new WorkspaceDiagnosticsException();
             }
@@ -107,7 +107,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
 
         private void WriteWorkspaceDiagnostics()
         {
-            if (_workspace.Diagnostics.Count > 0)
+            if (_workspace!.Diagnostics.Count > 0)
             {
                 ConsoleWriteLineWithColor(ConsoleColor.Red, "Error opening solution/project.");
                 Console.WriteLine("Workspace diagnostics:");

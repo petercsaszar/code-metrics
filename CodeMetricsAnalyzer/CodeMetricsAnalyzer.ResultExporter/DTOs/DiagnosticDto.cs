@@ -1,13 +1,12 @@
-﻿namespace CodeMetricsAnalyzer.ResultExporter.DTOs
+﻿namespace CodeMetricsAnalyzer.ResultExporter.DTOs;
+
+public class DiagnosticDto
 {
-    public class DiagnosticDto
-    {
-        public string Id { get; set; }
-        public string Severity { get; set; }
-        public string Title { get; set; }
-        public string Description { get; set; }
-        public string Message { get; set; }
-        public string FilePath { get; set; }
-        public LocationDto Location { get; set; }
-    }
+    public required string Id { get; set; }
+    public required string Severity { get; set; }
+    public required string Title { get; set; }
+    public required string Description { get; set; }
+    public required string Message { get; set; }
+    public required string FilePath { get; set; }
+    public required LocationDto Location { get; set; }
 }

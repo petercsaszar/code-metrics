@@ -11,6 +11,6 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
     {
         public FileInfo Source { get; set; } = null!;
         public string? Output { get; set; }
-        public AnalyzerConfiguration AnalyzerConfiguration { get; set; }
+        public required AnalyzerConfiguration AnalyzerConfiguration { get; set; }
     }
 }

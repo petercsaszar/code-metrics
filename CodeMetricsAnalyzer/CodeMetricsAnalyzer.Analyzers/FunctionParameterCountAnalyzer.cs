@@ -9,9 +9,14 @@ using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class FunctionParameterCountAnalyzer(AnalyzerConfiguration config) : MethodAnalyzer(config)
+    public class FunctionParameterCountAnalyzer : MethodAnalyzer
     {
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.FunctionParameterCountRule];
+        public FunctionParameterCountAnalyzer(AnalyzerConfiguration config) : base(config)
+        {
+        }
+
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
+            => ImmutableArray.Create(DiagnosticDescriptors.FunctionParameterCountRule);
 
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)

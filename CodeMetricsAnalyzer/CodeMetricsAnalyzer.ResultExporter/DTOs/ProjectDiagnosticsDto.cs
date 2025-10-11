@@ -1,11 +1,8 @@
-﻿using System.Collections.Generic;
+﻿namespace CodeMetricsAnalyzer.ResultExporter.DTOs;
 
-namespace CodeMetricsAnalyzer.ResultExporter.DTOs
+public class ProjectDiagnosticsDto
 {
-    public class ProjectDiagnosticsDto
-    {
-        public string Name { get; set; }
-        public string FilePath { get; set; }
-        public List<DiagnosticDto> Diagnostics { get; set; }
-    }
+    public required string Name { get; set; }
+    public required string FilePath { get; set; }
+    public required List<DiagnosticDto> Diagnostics { get; set; }
 }

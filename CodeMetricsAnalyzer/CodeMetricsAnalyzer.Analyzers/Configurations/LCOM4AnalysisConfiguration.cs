@@ -8,8 +8,8 @@ namespace CodeMetricsAnalyzer.Analyzers.Configurations
 {
     public class LCOM4AnalysisConfiguration
     {
-        public double CohesionThreshold { get; init; }
-        public int MinimumMethodCount { get; init; }
-        public int MinimumFieldCount { get; init; }
+        public double CohesionThreshold { get; set; }
+        public int MinimumMethodCount { get; set; }
+        public int MinimumFieldCount { get; set; }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
@@ -17,7 +18,8 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
         }
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [DiagnosticDescriptors.BumpyRoadRule];
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics 
+            => ImmutableArray.Create(DiagnosticDescriptors.BumpyRoadRule);
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
@@ -70,10 +72,15 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         private bool IsConsideredStatement(SyntaxNode node)
         {
-            return node is StatementSyntax && node.Kind() is
-                SyntaxKind.IfStatement or SyntaxKind.ForStatement or SyntaxKind.WhileStatement or
-                 SyntaxKind.DoStatement or SyntaxKind.SwitchStatement or SyntaxKind.Block or
-                 SyntaxKind.LocalDeclarationStatement or SyntaxKind.ExpressionStatement;
+            return node is StatementSyntax &&
+                   (node.IsKind(SyntaxKind.IfStatement) ||
+                    node.IsKind(SyntaxKind.ForStatement)     ||
+                    node.IsKind(SyntaxKind.WhileStatement) ||
+                    node.IsKind(SyntaxKind.DoStatement) ||
+                    node.IsKind(SyntaxKind.SwitchStatement)  ||
+                    node.IsKind(SyntaxKind.Block) ||
+                    node.IsKind(SyntaxKind.LocalDeclarationStatement) ||
+                    node.IsKind(SyntaxKind.ExpressionStatement));
         }
     }
 }
