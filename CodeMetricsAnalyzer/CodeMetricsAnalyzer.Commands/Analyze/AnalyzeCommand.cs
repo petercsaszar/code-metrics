@@ -92,7 +92,8 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 ["NoWarn"] = "NU1902;NU1903",
             };
 
-            MSBuildLocator.RegisterDefaults();
+            if (!MSBuildLocator.IsRegistered)
+                MSBuildLocator.RegisterDefaults();
 
             _workspace = MSBuildWorkspace.Create(properties);
         }
