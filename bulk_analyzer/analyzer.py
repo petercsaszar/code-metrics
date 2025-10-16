@@ -186,7 +186,7 @@ def run_builtin_roslyn_metrics(repo_path):
         return None
    
 
-def run_analyzers(repo_path):
+def run_analyzers(repo_path, custom_build_command=None):
     """Run the roslyn analyzers."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
     solution_path = find_solution_file(repo_path)
@@ -202,10 +202,14 @@ def run_analyzers(repo_path):
         ]
         subprocess.run(clean_command, capture_output=True, text=True, check=False)
 
-        build_command = [
-        "dotnet", "build", solution_path
-        ]
-        subprocess.run(build_command, capture_output=True, text=True, check=True)
+        if (custom_build_command is None):
+            build_command = [
+            "dotnet", "build", solution_path
+            ]
+            subprocess.run(build_command, capture_output=True, text=True, check=True)
+        else:
+            custom_build_command = project_path + custom_build_command
+            subprocess.run(custom_build_command, capture_output=True, text=True, check=True)
     except subprocess.CalledProcessError as e:
         print(f"❌ Build error: {e}. Trying to run analyzer without build.")
 
