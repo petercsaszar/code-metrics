@@ -208,8 +208,8 @@ def run_analyzers(repo_path, custom_build_command=None):
             ]
             subprocess.run(build_command, capture_output=True, text=True, check=True)
         else:
-            custom_build_command = project_path + custom_build_command
-            subprocess.run(custom_build_command, capture_output=True, text=True, check=True)
+            build_command = f"cd {repo_path} && {custom_build_command}"
+            subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True)
     except subprocess.CalledProcessError as e:
         print(f"❌ Build error: {e}. Trying to run analyzer without build.")
 
