@@ -51,10 +51,25 @@ public class Program
             description: "Output file path."
         );
 
+        var msbuildOption = new Option<string?>(
+            name: "--msbuild-path",
+            description: "Path to MSBuild installation to use."
+        );
+        msbuildOption.AddValidator(result =>
+        {
+            var location = result.GetValueForOption(msbuildOption);
+            if (location == null || !System.IO.Directory.Exists(location))
+            {
+                result.ErrorMessage = "The provided MSBuild location is invalid.";
+                return;
+            }
+        });
+
         var command = new Command("analyze", "Performs code metrics analysis on the provided project or solution.")
         {
             sourceArgument,
-            outputOption
+            outputOption,
+            msbuildOption
         };
 
         command.SetHandler(async (InvocationContext context) =>
@@ -63,12 +78,14 @@ public class Program
 
             var source = context.ParseResult.GetValueForArgument(sourceArgument);
             var output = context.ParseResult.GetValueForOption(outputOption);
+            var msbuildPath = context.ParseResult.GetValueForOption(msbuildOption);
             var analyzerConfiguration = await LoadAppSettingsAsync(cancellationToken);
 
             var options = new AnalyzeCommandOptions
             {
                 Source = source,
                 Output = output,
+                MSBuildPath = msbuildPath,
                 AnalyzerConfiguration = analyzerConfiguration
             };
 

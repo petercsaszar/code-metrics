@@ -37,8 +37,11 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 WriteWorkspaceDiagnostics();
                 return 1;
             }
-            catch
+            catch (Exception e)
             {
+                // TODO better error handling/logging
+                Console.WriteLine(e.Message);
+                Console.WriteLine("Try defining the MSBuild path using the --msbuild-path option.");
                 return 2;
             }
         }
@@ -86,15 +89,34 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             // TODO export to config
             var properties = new Dictionary<string, string>
             {
+                ["DesignTimeBuild"] = "true",
+                ["BuildingInsideVisualStudio"] = "false",
+                ["RunAnalyzers"] = "false",
+                ["SkipUnsupportedTargetFrameworks"] = "true",
+
+                ["SuppressTfmSupportBuildWarnings"] = "true",
+                ["TreatWarningsAsErrors"] = "false",
+
                 ["RunAnalyzers"] = "false",
                 ["WarningsAsErrors"] = "",
                 ["WarningsNotAsErrors"] = "NU1902;NU1903",
                 ["NoWarn"] = "NU1902;NU1903",
             };
 
-            if (!MSBuildLocator.IsRegistered)
-                MSBuildLocator.RegisterDefaults();
+            Environment.SetEnvironmentVariable("DOTNET_ROLL_FORWARD", "latestMajor");
 
+            
+            if (!MSBuildLocator.IsRegistered)
+            {
+                if (_options.MSBuildPath is not null)
+                {
+                    MSBuildLocator.RegisterMSBuildPath(_options.MSBuildPath);
+                }
+                else
+                {
+                    MSBuildLocator.RegisterDefaults();
+                }
+            }
             _workspace = MSBuildWorkspace.Create(properties);
         }
 

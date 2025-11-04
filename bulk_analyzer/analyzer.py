@@ -20,6 +20,7 @@ MILESTONES = config["gitlab"]["milestone_keywords"]
 CLONE_DIR = config["project"]["clone_dir"]
 
 ANALYZER_DIR = config["analyzer"]["project_dir"]
+MSBUILD_DIR = config["analyzer"]["msbuild_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
 UNITY_PATH = config["analyzer"]["unity_path"]
 UNITY_VERSION = config["analyzer"]["unity_version"]
@@ -214,8 +215,9 @@ def run_analyzers(repo_path, custom_build_command=None):
         print(f"❌ Build error: {e}. Trying to run analyzer without build.")
 
     try:        
+        # TODO
         analyze_command = [
-        "dotnet", "run", "--project", project_path, "analyze", solution_path, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
+        "dotnet", "run", "--project", project_path, "analyze", solution_path, "--msbuild-path", MSBUILD_DIR#, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
         ]
     
         result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
