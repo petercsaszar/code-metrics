@@ -143,7 +143,7 @@ def aggregate_project_builtin_metrics(metrics_files):
 
     return averaged_metrics
 
-def run_builtin_roslyn_metrics(repo_path):
+def run_builtin_roslyn_metrics(repo_path, custom_build_command=None):
     """Run Roslyn built-in metrics analyzer."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
     solution_path = find_solution_file(repo_path)
@@ -156,15 +156,7 @@ def run_builtin_roslyn_metrics(repo_path):
     add_metrics_package_to_all_projects(repo_path)
 
     try:
-        clean_command = [
-            "dotnet", "clean", solution_path
-        ]
-        subprocess.run(clean_command, capture_output=True, text=True, check=False)
-
-        build_command = [
-        "dotnet", "build", solution_path
-        ]
-        subprocess.run(build_command, capture_output=True, text=True, check=True)
+        build_solution(repo_path, solution_path, custom_build_command)
     except subprocess.CalledProcessError as e:
         print(f"❌ Build error: {e}. Trying to run analyzer without build.")
         
@@ -198,21 +190,10 @@ def run_analyzers(repo_path, custom_build_command=None):
     print(f"🚀 Running analyzers for {repo_path} ...")
 
     try:
-        clean_command = [
-            "dotnet", "clean", solution_path
-        ]
-        subprocess.run(clean_command, capture_output=True, text=True, check=False)
-
-        if (custom_build_command is None):
-            build_command = [
-            "dotnet", "build", solution_path
-            ]
-            subprocess.run(build_command, capture_output=True, text=True, check=True)
-        else:
-            build_command = f"cd {repo_path} && {custom_build_command}"
-            subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True)
+        build_solution(repo_path, solution_path, custom_build_command)
     except subprocess.CalledProcessError as e:
         print(f"❌ Build error: {e}. Trying to run analyzer without build.")
+
 
     try:        
         # TODO
@@ -249,6 +230,22 @@ def run_analyzers(repo_path, custom_build_command=None):
         print(f"❌ Error running analyzer: {e}")
         return None
 
+def build_solution(repo_path, solution_path, custom_build_command=None):
+    clean_command = [
+            "dotnet", "clean", solution_path
+        ]
+    subprocess.run(clean_command, capture_output=True, text=True, check=False)
+
+    if (custom_build_command is None):
+        build_command = [
+        "dotnet", "build", solution_path
+        ]
+        subprocess.run(build_command, capture_output=True, text=True, check=True)
+    else:
+        build_command = f"cd {repo_path} && {custom_build_command}"
+        subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True)
+
+    subprocess.run(clean_command, capture_output=True, text=True, check=False)
 
 def analyze_milestone(milestone_keywords = None):
     """Analyze all milestone commits using Bumpy Road Analyzer."""

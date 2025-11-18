@@ -1,7 +1,10 @@
-﻿using CodeMetricsAnalyzer.ResultExporter;
+﻿using CodeMetricsAnalyzer.Analyzers;
+using CodeMetricsAnalyzer.ResultExporter;
 using CodeMetricsAnalyzer.ResultExporter.DTOs;
-using Microsoft.CodeAnalysis.Diagnostics;
+using Microsoft.Build.Locator;
+using Microsoft.Build.Tasks;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.MSBuild;
 using System;
 using System.Collections.Generic;
@@ -9,8 +12,6 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using CodeMetricsAnalyzer.Analyzers;
-using Microsoft.Build.Locator;
 
 namespace CodeMetricsAnalyzer.Commands.Analyze
 {
@@ -40,7 +41,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             catch (Exception e)
             {
                 // TODO better error handling/logging
-                Console.WriteLine(e.Message);
+                ConsoleWriteLineWithColor(ConsoleColor.Red, e.Message);
                 Console.WriteLine("Try defining the MSBuild path using the --msbuild-path option.");
                 return 2;
             }
@@ -89,15 +90,17 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             // TODO export to config
             var properties = new Dictionary<string, string>
             {
-                ["DesignTimeBuild"] = "true",
+                // ["DesignTimeBuild"] = "true",
                 ["BuildingInsideVisualStudio"] = "false",
                 ["RunAnalyzers"] = "false",
                 ["SkipUnsupportedTargetFrameworks"] = "true",
 
                 ["SuppressTfmSupportBuildWarnings"] = "true",
                 ["TreatWarningsAsErrors"] = "false",
+                ["CheckEolTargetFramework"] = "false",
 
                 ["RunAnalyzers"] = "false",
+                ["NuGetAudit"] = "false",
                 ["WarningsAsErrors"] = "",
                 ["WarningsNotAsErrors"] = "NU1902;NU1903",
                 ["NoWarn"] = "NU1902;NU1903",
@@ -122,9 +125,22 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
 
         private void CheckForWorkspaceDiagnostics()
         {
-            if (_workspace!.Diagnostics.Any(diagnostic => diagnostic.Kind == WorkspaceDiagnosticKind.Failure))
+            foreach (var diagnostic in _workspace!.Diagnostics)
             {
-                throw new WorkspaceDiagnosticsException();
+                if (diagnostic.Message.Contains("is not associated with a language",
+                                                StringComparison.OrdinalIgnoreCase) || 
+                                               (diagnostic.Message.Contains("has a known", StringComparison.OrdinalIgnoreCase) &&
+                                                diagnostic.Message.Contains("vulnerability", StringComparison.OrdinalIgnoreCase)))
+                {
+                    ConsoleWriteLineWithColor(ConsoleColor.Yellow, $"Warning: {diagnostic.Message}");
+                    continue;
+                }
+
+               
+                if (diagnostic.Kind == WorkspaceDiagnosticKind.Failure)
+                {
+                    throw new WorkspaceDiagnosticsException();
+                }
             }
         }
 

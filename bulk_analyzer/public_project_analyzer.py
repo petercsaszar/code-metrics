@@ -265,7 +265,7 @@ def analyze_projects():
                 # clean_sln_nested_projects(find_solution_file(repo_path))
                 patch_all_csproj_files(repo_path)
                 analysis_result = run_analyzers(repo_path, custom_build_command)
-                builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path)
+                builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path, custom_build_command)
                 if analysis_result or builtin_analysis_result:
                     if project_id not in results:
                         results[project_id] = {}
