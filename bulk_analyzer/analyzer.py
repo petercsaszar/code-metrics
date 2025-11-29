@@ -143,10 +143,13 @@ def aggregate_project_builtin_metrics(metrics_files):
 
     return averaged_metrics
 
-def run_builtin_roslyn_metrics(repo_path, custom_build_command=None):
+def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_command=None):
     """Run Roslyn built-in metrics analyzer."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
-    solution_path = find_solution_file(repo_path)
+    if not solution_path:
+        solution_path = find_solution_file(repo_path)
+    else:
+        solution_path = os.path.join(repo_path, solution_path)
     if not solution_path:
         print("❌ No solution found.")
         return None
@@ -179,10 +182,13 @@ def run_builtin_roslyn_metrics(repo_path, custom_build_command=None):
         return None
    
 
-def run_analyzers(repo_path, custom_build_command=None):
+def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
     """Run the roslyn analyzers."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
-    solution_path = find_solution_file(repo_path)
+    if not solution_path:
+        solution_path = find_solution_file(repo_path)
+    else:
+        solution_path = os.path.join(repo_path, solution_path)
     if not solution_path:
         print("❌ No solution found.")
         return None

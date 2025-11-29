@@ -245,6 +245,7 @@ def analyze_projects():
         if not repo_path:
             continue
         custom_build_command = project.get("custom_build_command", None)
+        solution_path = project.get("solution_path", None)
         
 
         repo_name = get_repo_name(repo_url)
@@ -264,8 +265,8 @@ def analyze_projects():
                 # remove_vcxproj_entries(find_solution_file(repo_path))
                 # clean_sln_nested_projects(find_solution_file(repo_path))
                 patch_all_csproj_files(repo_path)
-                analysis_result = run_analyzers(repo_path, custom_build_command)
-                builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path, custom_build_command)
+                analysis_result = run_analyzers(repo_path, solution_path, custom_build_command)
+                builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
                 if analysis_result or builtin_analysis_result:
                     if project_id not in results:
                         results[project_id] = {}
