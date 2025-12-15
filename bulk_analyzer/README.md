@@ -69,3 +69,9 @@ Create a `config.yml` file. An example configuration (`config.example.yml`) is p
 
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
+
+### Docker workflow
+- Build the base image once from the project root: `docker build -t code-metrics-analyzer -f docker/Dockerfile .`
+- Run `python public_project_analyzer.py` on the host. The script now spawns a fresh `code-metrics-analyzer` container for every commit/version it evaluates, installing any extra .NET SDKs and workloads on demand inside that container.
+- To execute a single analysis manually: `docker run --rm -v ${PWD}:/workspace -w /workspace/bulk_analyzer -e ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml -e CONFIG_PATH=/workspace/bulk_analyzer/config.yml -e PYTHONPATH=/workspace code-metrics-analyzer /opt/venv/bin/python -m bulk_analyzer.container_runner --repo-path /workspace/public_repos/<repo>`
+- Containers stream their diagnostic logs to stderr and return metrics as JSON to stdout. The host script aggregates the results and writes the familiar JSON outputs.

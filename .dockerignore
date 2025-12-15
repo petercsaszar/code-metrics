@@ -1,0 +1,16 @@
+bin
+obj
+.git
+.gitignore
+.vs
+.idea
+__pycache__
+.venv
+*/.venv
+**/.venv
+*.pyc
+*.pyo
+*.pyd
+*.DS_Store
+CodeMetricsAnalyzer/**/bin
+CodeMetricsAnalyzer/**/obj

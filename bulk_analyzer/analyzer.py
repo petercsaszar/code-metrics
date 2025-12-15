@@ -8,9 +8,12 @@ import requests
 import xml.etree.ElementTree as ET
 from glob import glob
 from milestone_commit_finder import get_milestone_commits
+from dotnet_environment import ensure_dotnet_environment
 
 # === Load Configuration ===
-with open("config.yml", "r") as file:
+CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
+
+with open(CONFIG_PATH, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
 GITLAB_URL = config["gitlab"]["url"]
@@ -204,7 +207,7 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
     try:        
         # TODO
         analyze_command = [
-        "dotnet", "run", "--project", project_path, "analyze", solution_path, "--msbuild-path", MSBUILD_DIR#, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
+        "dotnet", "run", "--project", project_path, "analyze", solution_path#, "--msbuild-path", MSBUILD_DIR#, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
         ]
     
         result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
@@ -237,6 +240,7 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
         return None
 
 def build_solution(repo_path, solution_path, custom_build_command=None):
+    ensure_dotnet_environment(repo_path)
     clean_command = [
             "dotnet", "clean", solution_path
         ]

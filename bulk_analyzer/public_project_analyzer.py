@@ -4,19 +4,23 @@ import json
 import os
 import git
 import re
+import subprocess
 from glob import glob
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
-from analyzer import run_analyzers, run_builtin_roslyn_metrics, checkout_commit, find_solution_file
+from analyzer import checkout_commit
 
 # === Load Configuration ===
-with open("config.yml", "r") as file:
+CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
+
+with open(CONFIG_PATH, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
 # === Configuration ===
 REPO_LIST_FILE = config["public_analyzer"]["repository_list"]  # File containing repository URLs
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 CLONE_DIR = config["public_analyzer"]["clone_dir"]
+DOCKER_IMAGE = config.get("docker", {}).get("image", "code-metrics-analyzer")
 
 def load_commit_list():
     """Load a JSON file that contains a list of repos and their commit hashes."""
@@ -232,6 +236,69 @@ def clean_sln_nested_projects(sln_path):
 
     print("Finished cleaning solution file.")
 
+
+def _workspace_root():
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _to_container_path(host_path):
+    root = _workspace_root()
+    rel = os.path.relpath(host_path, root)
+    return os.path.join("/workspace", rel.replace("\\", "/")).replace("\\", "/")
+
+
+def run_analysis_in_container(repo_path, solution_path=None, custom_build_command=None):
+    workspace = _workspace_root()
+    repo_container_path = _to_container_path(repo_path)
+
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{workspace}:/workspace",
+        "-w",
+        "/workspace/bulk_analyzer",
+        "-e",
+        "ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml",
+        "-e",
+        "CONFIG_PATH=/workspace/bulk_analyzer/config.yml",
+        "-e",
+        "MSBUILD_PATH=dotnet",
+        "-e",
+        "PYTHONPATH=/workspace",
+        "--entrypoint",
+        "/opt/venv/bin/python",
+        DOCKER_IMAGE,
+        "-m",
+        "bulk_analyzer.container_runner",
+        "--repo-path",
+        repo_container_path,
+    ]
+
+    if solution_path:
+        command.extend(["--solution-path", solution_path])
+
+    if custom_build_command:
+        command.extend(["--custom-build-command", custom_build_command])
+
+    result = subprocess.run(command, capture_output=True, text=True)
+
+    if result.stderr:
+        print(result.stderr, end="")
+
+    if result.returncode != 0:
+        print(result.stdout)
+        print(result.stderr)
+        # raise RuntimeError(f"Container analysis failed with exit code {result.returncode}")
+
+    try:
+        return json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        print(result.stdout)
+        print(result.stderr)
+        # raise RuntimeError("Failed to parse analyzer output from container") from exc
+
 def analyze_projects():
     """Analyze all projects with different thresholds."""
     projects = load_commit_list()
@@ -265,8 +332,9 @@ def analyze_projects():
                 # remove_vcxproj_entries(find_solution_file(repo_path))
                 # clean_sln_nested_projects(find_solution_file(repo_path))
                 patch_all_csproj_files(repo_path)
-                analysis_result = run_analyzers(repo_path, solution_path, custom_build_command)
-                builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
+                container_result = run_analysis_in_container(repo_path, solution_path, custom_build_command)
+                analysis_result = container_result.get("custom", {})
+                builtin_analysis_result = container_result.get("metrics", {})
                 if analysis_result or builtin_analysis_result:
                     if project_id not in results:
                         results[project_id] = {}

@@ -22,3 +22,6 @@ analyzer:
   project_file: "CodeMetricsAnalyzer.csproj"  # The main project file to run
   unity_path: "" # optional, the Unity.exe path for creating .sln files for Unity projects
   unity_version: "6000.0.43f1"
+
+docker:
+  image: "code-metrics-analyzer"
