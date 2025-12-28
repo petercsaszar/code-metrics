@@ -1,3 +1,4 @@
+import os
 import requests
 import datetime
 import json
@@ -5,7 +6,17 @@ import yaml
 from fuzzywuzzy import fuzz
 
 # === Load Configuration ===
-with open("config.yml", "r") as file:
+# Prefer env vars (ANALYZER_CONFIG or CONFIG_PATH), otherwise fall back to the package's config.yml
+CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
+
+# If CONFIG_PATH is not absolute and doesn't exist relative to CWD, try the package directory
+if not os.path.isabs(CONFIG_PATH) and not os.path.exists(CONFIG_PATH):
+    module_dir = os.path.dirname(__file__)
+    alt = os.path.join(module_dir, CONFIG_PATH)
+    if os.path.exists(alt):
+        CONFIG_PATH = alt
+
+with open(CONFIG_PATH, "r", encoding="utf-8") as file:
     config = yaml.safe_load(file)
 
 # === Configuration ===

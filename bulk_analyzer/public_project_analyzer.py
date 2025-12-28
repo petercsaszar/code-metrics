@@ -5,10 +5,12 @@ import os
 import git
 import re
 import subprocess
+import tempfile
+import shutil
 from glob import glob
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
-from analyzer import checkout_commit
+
 
 # === Load Configuration ===
 CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
@@ -247,57 +249,76 @@ def _to_container_path(host_path):
     return os.path.join("/workspace", rel.replace("\\", "/")).replace("\\", "/")
 
 
-def run_analysis_in_container(repo_path, solution_path=None, custom_build_command=None):
+def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_build_command=None, timeout=None):
+    """
+    Clone the given `repo_url` inside a fresh temp dir mounted to the container at /work,
+    checkout `ref` (tag/commit/branch) if provided, then run `bulk_analyzer.container_runner`
+    against the in-container path `/work/repo`.
+    Returns parsed JSON output from the container (or empty dict on failure).
+    """
     workspace = _workspace_root()
-    repo_container_path = _to_container_path(repo_path)
 
-    command = [
-        "docker",
-        "run",
-        "--rm",
-        "-v",
-        f"{workspace}:/workspace",
-        "-w",
-        "/workspace/bulk_analyzer",
-        "-e",
-        "ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml",
-        "-e",
-        "CONFIG_PATH=/workspace/bulk_analyzer/config.yml",
-        "-e",
-        "MSBUILD_PATH=dotnet",
-        "-e",
-        "PYTHONPATH=/workspace",
-        "--entrypoint",
-        "/opt/venv/bin/python",
-        DOCKER_IMAGE,
-        "-m",
-        "bulk_analyzer.container_runner",
-        "--repo-path",
-        repo_container_path,
-    ]
-
-    if solution_path:
-        command.extend(["--solution-path", solution_path])
-
-    if custom_build_command:
-        command.extend(["--custom-build-command", custom_build_command])
-
-    result = subprocess.run(command, capture_output=True, text=True)
-
-    if result.stderr:
-        print(result.stderr, end="")
-
-    if result.returncode != 0:
-        print(result.stdout)
-        print(result.stderr)
-        # raise RuntimeError(f"Container analysis failed with exit code {result.returncode}")
-
+    tempdir = tempfile.mkdtemp(prefix="release_")
     try:
-        return json.loads(result.stdout or "{}")
-    except json.JSONDecodeError as exc:
-        print(result.stdout)
-        print(result.stderr)
-        # raise RuntimeError("Failed to parse analyzer output from container") from exc
+        in_container_repo_path = "/work/repo"
+
+        # Build shell script run inside container: clone, checkout ref if present, then run analyzer
+        clone_and_run = (
+            f"set -eu; "
+            f"git clone {repo_url} {in_container_repo_path} || exit 1; "
+        )
+        if ref:
+            clone_and_run += f"cd {in_container_repo_path} && git fetch --tags || true && git checkout {ref} || true; "
+
+        clone_and_run += (
+            f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
+            f"--repo-path {in_container_repo_path} "
+        )
+        if solution_path:
+            clone_and_run += f"--solution-path {solution_path} "
+        if custom_build_command:
+            safe_cmd = custom_build_command.replace('"', '\\"')
+            clone_and_run += f'--custom-build-command "{safe_cmd}" '
+
+        docker_cmd = [
+            "docker", "run", "--rm",
+            # mount the per-run workdir and the analyzer workspace so the container can import bulk_analyzer
+            "-v", f"{tempdir}:/work",
+            "-v", f"{workspace}:/workspace",
+            "-w", "/workspace/bulk_analyzer",
+            "-e", "ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml",
+            "-e", "CONFIG_PATH=/workspace/bulk_analyzer/config.yml",
+            "-e", "MSBUILD_PATH=dotnet",
+            "-e", "PYTHONPATH=/workspace",
+            "--entrypoint", "/bin/sh",
+            DOCKER_IMAGE,
+            "-c",
+            clone_and_run
+        ]
+
+        result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=timeout)
+
+        if result.stderr:
+            print(result.stderr, end="")
+
+        if result.returncode != 0:
+            print(result.stdout)
+            print(result.stderr)
+
+        try:
+            return json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            # try to parse final line as JSON if logs were printed earlier
+            lines = (result.stdout or "").strip().splitlines()
+            if lines:
+                try:
+                    return json.loads(lines[-1])
+                except Exception:
+                    pass
+            print("Failed to parse analyzer output from container")
+            return {}
+    finally:
+        shutil.rmtree(tempdir, ignore_errors=True)
 
 def analyze_projects():
     """Analyze all projects with different thresholds."""
@@ -307,39 +328,23 @@ def analyze_projects():
 
     for project in projects:
         repo_url = project["repo"]
-        tag_list = project["tags"]
-        repo_path = clone_repo(repo_url)
-        if not repo_path:
-            continue
+        tag_list = project.get("tags", [])
         custom_build_command = project.get("custom_build_command", None)
         solution_path = project.get("solution_path", None)
-        
 
         repo_name = get_repo_name(repo_url)
         project_id = repo_name if repo_name else repo_url
         results[project_id] = {}
 
-        repo = git.Repo(repo_path)
         for i, tag_name in enumerate(tag_list):
             try:
-                if tag_name not in repo.tags:
-                    print(f"⚠️ Tag '{tag_name}' not found in {repo_url}")
-                    continue
-                tag_ref = repo.tags[tag_name]
-                commit = tag_ref.commit.hexsha
-                checkout_commit(repo_path, commit)
-                # remove_global_json(repo_path)
-                # remove_vcxproj_entries(find_solution_file(repo_path))
-                # clean_sln_nested_projects(find_solution_file(repo_path))
-                patch_all_csproj_files(repo_path)
-                container_result = run_analysis_in_container(repo_path, solution_path, custom_build_command)
+                container_result = run_analysis_in_container(repo_url, ref=tag_name, solution_path=solution_path, custom_build_command=custom_build_command)
                 analysis_result = container_result.get("custom", {})
                 builtin_analysis_result = container_result.get("metrics", {})
                 if analysis_result or builtin_analysis_result:
-                    if project_id not in results:
-                        results[project_id] = {}
                     results[project_id][i] = {
-                        "repo_url": project,
+                        "repo_url": repo_url,
+                        "tag": tag_name,
                         "bumpy_score": analysis_result.get("bumpy_score", 0),
                         "fpc_score": analysis_result.get("fpc_score", 0),
                         "lcom5_score": analysis_result.get("lcom5_score", 0),
@@ -349,9 +354,8 @@ def analyze_projects():
                         "ClassCoupling": builtin_analysis_result.get("ClassCoupling", 0),
                         "SourceLines": builtin_analysis_result.get("SourceLines", 0)
                     }
-
             except Exception as e:
-                print(f"⚠️ Error analyzing commit {commit} in {repo_url}: {e}")
+                print(f"⚠️ Error analyzing tag {tag_name} in {repo_url}: {e}")
 
     # Save results
     with open("public_analysis_results.json", "w", encoding="utf-8") as f:

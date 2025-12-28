@@ -7,8 +7,8 @@ import yaml
 import requests
 import xml.etree.ElementTree as ET
 from glob import glob
-from milestone_commit_finder import get_milestone_commits
-from dotnet_environment import ensure_dotnet_environment
+from .milestone_commit_finder import get_milestone_commits
+from .dotnet_environment import ensure_dotnet_environment
 
 # === Load Configuration ===
 CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
