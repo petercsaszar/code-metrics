@@ -76,6 +76,34 @@ The results can be visualized using the jupyter notebooks found in the `visualiz
 - To execute a single analysis manually (Windows): `docker run --rm --volume="${pwd}:/workspace" --workdir=/workspace/bulk_analyzer --env ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml --env CONFIG_PATH=/workspace/bulk_analyzer/config.yml --env PYTHONPATH=/workspace --entrypoint /opt/venv/bin/python code-metrics-analyzer -m bulk_analyzer.container_runner --repo-path /workspace/bulk_analyzer/public_repos/<repo>`
 - Containers stream their diagnostic logs to stderr and return metrics as JSON to stdout. The host script aggregates the results and writes the familiar JSON outputs.
 
+### Environment variables
+
+The analyzer and the container orchestration use several environment variables and build-args you can set to control behaviour. Defaults are shown where applicable.
+
+- **ANALYZER_CONFIG / CONFIG_PATH**: Path to the YAML configuration file used by the analyzer. When running inside the official image these are set to `/opt/bulk_analyzer/config.yml` (see `docker/Dockerfile`). If not set, the code falls back to `config.yml` in the current working directory.
+- **DOCKER_IMAGE**: Override the Docker image name used by `public_project_analyzer.py` when spawning containers. Default: value from the config `docker.image` or `code-metrics-analyzer`.
+- **MSBUILD_PATH**: Path or command to the MSBuild/dotnet binary to use (e.g. `dotnet`). Default: `dotnet`.
+- **ANALYSIS_LOGFILE**: Path where container run failures and error details are appended. Default: `analysis_errors.log` in the workspace root unless overridden.
+- **DUMP_CONTAINER_OUTPUT**: When set to `1`, `true`, or `True` the orchestrator will append full container STDOUT/STDERR to `ANALYSIS_LOGFILE` even on successful runs (useful for debugging noisy containers).
+- **LOG_LEVEL**: Logging verbosity for the Python code (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Default: `INFO`.
+- **BUNDLED_ANALYZER_PATH**: Path where the published CodeMetricsAnalyzer DLL is expected inside the image (used as a fallback when the analyzer project is not mounted). Default: `/opt/CodeMetricsAnalyzer`.
+- **PYTHONPATH**: Not required by the analyzer itself but useful when bind-mounting your workspace into the image so Python can import the `bulk_analyzer` package (examples in this README use `--env PYTHONPATH=/workspace`).
+
+Build-time argument and runtime variables for .NET installation:
+
+- **DOTNET_INSTALL_URL** (build-arg): When building the Docker image you can pass `--build-arg DOTNET_INSTALL_URL=...` to control which `dotnet-install.sh` is placed into the image. Default: `https://dot.net/v1/dotnet-install.sh`. Example:
+
+```bash
+docker build --build-arg DOTNET_INSTALL_URL=dotnet-install.sh -t code-metrics-analyzer -f docker/Dockerfile .
+```
+
+- **DOTNET_INSTALL_SCRIPT**: Runtime override for the location of the `dotnet-install.sh` script (used by `dotnet_environment.py`). Default: `/usr/local/bin/dotnet-install.sh`.
+- **DOTNET_INSTALL_DIR**: Directory where `dotnet-install.sh` will install SDKs when invoked. Default: `/usr/share/dotnet`.
+
+Notes:
+- Prefer environment variables for per-run overrides (CI, Docker, Kubernetes). Keep a versioned `config.yml` in the repo for stable defaults and to document analyzer settings.
+- If you enable dynamic SDK installation, ensure `DOTNET_INSTALL_SCRIPT` exists in the image (see `DOTNET_INSTALL_URL` build-arg above) so `ensure_dotnet_environment()` can automatically install SDKs and workloads required by the repository under analysis.
+
 #### Debian / Linux - install and debug
 Follow these steps on a Debian-based system to build the image, run one analysis, and debug interactively.
 

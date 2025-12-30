@@ -37,8 +37,8 @@ def main():
     analyzer.ANALYZER_DIR = make_absolute(analyzer.ANALYZER_DIR)
     log_buffer = io.StringIO()
     with contextlib.redirect_stdout(log_buffer):
-        metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
         custom = analyzer.run_analyzers(repo_path, solution_path, custom_build_command)
+        metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
 
     logs = log_buffer.getvalue()
     if logs:

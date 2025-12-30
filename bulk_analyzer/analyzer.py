@@ -9,6 +9,32 @@ import xml.etree.ElementTree as ET
 from glob import glob
 from .milestone_commit_finder import get_milestone_commits
 from .dotnet_environment import ensure_dotnet_environment
+import logging
+
+# Configure logging
+WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOG_FILE = os.getenv("ANALYSIS_LOGFILE", os.path.join(WORKSPACE, "analysis_errors.log"))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Root logger configuration: console + file handler for errors
+root_logger = logging.getLogger()
+root_logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+
+# Console handler
+ch = logging.StreamHandler()
+ch.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+ch.setFormatter(formatter)
+root_logger.addHandler(ch)
+
+# File handler (errors and above)
+try:
+    fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    fh.setLevel(logging.ERROR)
+    fh.setFormatter(formatter)
+    root_logger.addHandler(fh)
+except Exception as e:
+    root_logger.warning("Could not create log file %s: %s", LOG_FILE, e)
 
 # === Load Configuration ===
 CONFIG_PATH = os.getenv("ANALYZER_CONFIG", os.getenv("CONFIG_PATH", "config.yml"))
@@ -148,7 +174,6 @@ def aggregate_project_builtin_metrics(metrics_files):
 
 def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_command=None):
     """Run Roslyn built-in metrics analyzer."""
-    project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
     if not solution_path:
         solution_path = find_solution_file(repo_path)
     else:
@@ -164,25 +189,24 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
     try:
         build_solution(repo_path, solution_path, custom_build_command)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Build error: {e}. Trying to run analyzer without build.")
-        
-    try:               
-        analyze_command = [
-        "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
-        ]
-        subprocess.run(analyze_command, capture_output=True, text=True, check=False)
-    
-        # Find all generated *.Metrics.xml files under this solution's directory
-        metrics_files = glob(os.path.join(repo_path, "**", "*.Metrics.xml"), recursive=True)
-        print(f"🔍 Found {len(metrics_files)} metrics files.")
+        logging.warning("Build error, attempting to run metrics anyway: %s", e)
 
-        aggregated = aggregate_project_builtin_metrics(metrics_files)
-        if aggregated:
-            return aggregated
-    
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running analyzer: {e}")
-        return None
+    analyze_command = [
+        "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
+    ]
+    logging.info("Running Roslyn metrics command: %s", " ".join(analyze_command))
+    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False)
+    logging.debug("Roslyn metrics exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
+
+    # Find all generated *.Metrics.xml files under this solution's directory
+    metrics_files = glob(os.path.join(repo_path, "**", "*.Metrics.xml"), recursive=True)
+    logging.info("Found %d metrics files under %s", len(metrics_files), repo_path)
+
+    aggregated = aggregate_project_builtin_metrics(metrics_files)
+    if aggregated:
+        return aggregated
+
+    return None
    
 
 def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
@@ -197,47 +221,58 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
         return None
 
     print(f"🚀 Running analyzers for {repo_path} ...")
+    logging.info("Running analyzers for %s", repo_path)
 
     try:
         build_solution(repo_path, solution_path, custom_build_command)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Build error: {e}. Trying to run analyzer without build.")
+        logging.warning("Build error, trying analyzers anyway: %s", e)
 
-
-    try:        
-        # TODO
+    # Prefer running from the project file if available; otherwise try the bundled published dll in the image
+    if os.path.exists(project_path):
         analyze_command = [
-        "dotnet", "run", "--project", project_path, "analyze", solution_path#, "--msbuild-path", MSBUILD_DIR#, "-p:WarningsNotAsErrors=NU1903 -p:RunAnalyzers=false"
+            "dotnet", "run", "--project", project_path, "analyze", solution_path
         ]
-    
-        result = subprocess.run(analyze_command, capture_output=True, text=True, check=True)
+    else:
+        # Look for a bundled analyzer published to a known location inside the container
+        bundled_dir = os.getenv("BUNDLED_ANALYZER_PATH", "/opt/CodeMetricsAnalyzer")
+        dll_path = os.path.join(bundled_dir, "CodeMetricsAnalyzer.dll")
+        if os.path.exists(dll_path):
+            analyze_command = ["dotnet", dll_path, "analyze", solution_path]
+        else:
+            # Fallback: try to run using the analyzer dir in case image mounted differently
+            analyze_command = [
+                "dotnet", "run", "--project", project_path, "analyze", solution_path
+            ]
 
-        match_bumpy = re.search(r"(\d+)\s+CMA0001", result.stdout)
-        match_fpc = re.search(r"(\d+)\s+CMA0002", result.stdout)
-        match_lcom5 = re.search(r"(\d+)\s+CMA0004", result.stdout)
-        match_lcom4 = re.search(r"(\d+)\s+CMA0003", result.stdout)
+    logging.info("Executing analyzer command: %s", " ".join(analyze_command))
+    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False)
+    logging.debug("Analyzer exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
-        bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
-        fpc_score = int(match_fpc.group(1)) if match_fpc else 0
-        lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
-        lcom4_score = int(match_lcom4.group(1)) if match_lcom4 else 0
-
-        if "diagnostics found" not in result.stdout and "diagnostic found" not in result.stdout:
-            raise subprocess.CalledProcessError(returncode=result.returncode, cmd=result.args, output=result.stdout)
-
-        formatted_result = {
-            "bumpy_score": bumpy_score,
-            "fpc_score": fpc_score,
-            "lcom4_score": lcom4_score,
-            "lcom5_score": lcom5_score
-        }
-
-        return formatted_result
-
-        
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running analyzer: {e}")
+    if result.returncode != 0:
+        logging.error("Analyzer failed (exit %s). Command: %s", result.returncode, " ".join(analyze_command))
+        logging.error("stdout:\n%s", result.stdout)
+        logging.error("stderr:\n%s", result.stderr)
         return None
+
+    match_bumpy = re.search(r"(\d+)\s+CMA0001", result.stdout)
+    match_fpc = re.search(r"(\d+)\s+CMA0002", result.stdout)
+    match_lcom5 = re.search(r"(\d+)\s+CMA0004", result.stdout)
+    match_lcom4 = re.search(r"(\d+)\s+CMA0003", result.stdout)
+
+    bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
+    fpc_score = int(match_fpc.group(1)) if match_fpc else 0
+    lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
+    lcom4_score = int(match_lcom4.group(1)) if match_lcom4 else 0
+
+    formatted_result = {
+        "bumpy_score": bumpy_score,
+        "fpc_score": fpc_score,
+        "lcom4_score": lcom4_score,
+        "lcom5_score": lcom5_score
+    }
+
+    return formatted_result
 
 def build_solution(repo_path, solution_path, custom_build_command=None):
     ensure_dotnet_environment(repo_path)

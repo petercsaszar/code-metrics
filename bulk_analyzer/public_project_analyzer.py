@@ -1,15 +1,18 @@
+import os
+import git
 import numpy as np
 import yaml
 import json
-import os
-import git
 import re
 import subprocess
+import concurrent.futures
+import threading
 import tempfile
 import shutil
 from glob import glob
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
+from datetime import datetime, timezone
 
 
 # === Load Configuration ===
@@ -22,7 +25,7 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as file:
 REPO_LIST_FILE = config["public_analyzer"]["repository_list"]  # File containing repository URLs
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 CLONE_DIR = config["public_analyzer"]["clone_dir"]
-DOCKER_IMAGE = config.get("docker", {}).get("image", "code-metrics-analyzer")
+DOCKER_IMAGE = os.getenv("DOCKER_IMAGE", config.get("docker", {}).get("image", "code-metrics-analyzer"))
 
 def load_commit_list():
     """Load a JSON file that contains a list of repos and their commit hashes."""
@@ -258,67 +261,88 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
     """
     workspace = _workspace_root()
 
-    tempdir = tempfile.mkdtemp(prefix="release_")
-    try:
-        in_container_repo_path = "/work/repo"
+    # Clone into the container filesystem to avoid slow Windows bind mounts
+    in_container_repo_path = "/tmp/repo"
 
-        # Build shell script run inside container: clone, checkout ref if present, then run analyzer
-        clone_and_run = (
-            f"set -eu; "
-            f"git clone {repo_url} {in_container_repo_path} || exit 1; "
-        )
-        if ref:
-            clone_and_run += f"cd {in_container_repo_path} && git fetch --tags || true && git checkout {ref} || true; "
+    # Build shell script run inside container: clone, checkout ref if present, then run analyzer
+    clone_and_run = (
+        f"set -eu; "
+        f"git clone {repo_url} {in_container_repo_path} || exit 1; "
+    )
+    if ref:
+        clone_and_run += f"cd {in_container_repo_path} && git fetch --tags || true && git checkout {ref} || true; "
 
-        clone_and_run += (
-            f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
-            f"--repo-path {in_container_repo_path} "
-        )
-        if solution_path:
-            clone_and_run += f"--solution-path {solution_path} "
-        if custom_build_command:
-            safe_cmd = custom_build_command.replace('"', '\\"')
-            clone_and_run += f'--custom-build-command "{safe_cmd}" '
+    clone_and_run += (
+        f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
+        f"--repo-path {in_container_repo_path} "
+    )
+    if solution_path:
+        clone_and_run += f"--solution-path {solution_path} "
+    if custom_build_command:
+        safe_cmd = custom_build_command.replace('"', '\\"')
+        clone_and_run += f'--custom-build-command "{safe_cmd}" '
 
-        docker_cmd = [
-            "docker", "run", "--rm",
-            # mount the per-run workdir and the analyzer workspace so the container can import bulk_analyzer
-            "-v", f"{tempdir}:/work",
-            "-v", f"{workspace}:/workspace",
-            "-w", "/workspace/bulk_analyzer",
-            "-e", "ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml",
-            "-e", "CONFIG_PATH=/workspace/bulk_analyzer/config.yml",
-            "-e", "MSBUILD_PATH=dotnet",
-            "-e", "PYTHONPATH=/workspace",
-            "--entrypoint", "/bin/sh",
-            DOCKER_IMAGE,
-            "-c",
-            clone_and_run
-        ]
+    # Run fully inside the container (no host mounts); analyzer emits JSON to stdout
+    docker_cmd = [
+        "docker", "run", "--rm",
+        "-e", "MSBUILD_PATH=dotnet",
+        # point analyzer config to the copy inside the image
+        "-e", "ANALYZER_CONFIG=/opt/bulk_analyzer/config.yml",
+        "--entrypoint", "/bin/sh",
+        DOCKER_IMAGE,
+        "-c",
+        clone_and_run
+    ]
 
-        result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=timeout)
+    result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=timeout)
 
-        if result.stderr:
-            print(result.stderr, end="")
+    # Do not print container logs to the host console. If the container run failed,
+    # write full stdout/stderr to the analysis logfile and print a short message.
+    log_file = os.getenv("ANALYSIS_LOGFILE", os.path.join(workspace, "analysis_errors.log"))
 
-        if result.returncode != 0:
-            print(result.stdout)
-            print(result.stderr)
-
+    # Optional debug: dump container output to logfile even on success when enabled
+    if os.getenv("DUMP_CONTAINER_OUTPUT", "") in ("1", "true", "True"):
         try:
-            return json.loads(result.stdout or "{}")
-        except json.JSONDecodeError:
-            # try to parse final line as JSON if logs were printed earlier
-            lines = (result.stdout or "").strip().splitlines()
-            if lines:
-                try:
-                    return json.loads(lines[-1])
-                except Exception:
-                    pass
-            print("Failed to parse analyzer output from container")
-            return {}
-    finally:
-        shutil.rmtree(tempdir, ignore_errors=True)
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"{datetime.now(timezone.utc).isoformat()}Z DEBUG: Container output for {repo_url} ref={ref}\n")
+                lf.write("Command: " + " ".join(docker_cmd) + "\n")
+                lf.write("STDOUT:\n" + (result.stdout or "") + "\n")
+                lf.write("STDERR:\n" + (result.stderr or "") + "\n\n")
+        except Exception:
+            pass
+
+    if result.returncode != 0:
+        try:
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"{datetime.now(timezone.utc).isoformat()}Z ERROR: Container run failed for {repo_url} ref={ref}\n")
+                lf.write("Command: " + " ".join(docker_cmd) + "\n")
+                lf.write("STDOUT:\n" + (result.stdout or "") + "\n")
+                lf.write("STDERR:\n" + (result.stderr or "") + "\n\n")
+        except Exception:
+            pass
+
+        print(f"Container run failed for {repo_url} {ref}. See {log_file}")
+        return {}
+
+    # On success: try to parse JSON output. If logs were printed before JSON, parse last line.
+    try:
+        return json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        lines = (result.stdout or "").strip().splitlines()
+        if lines:
+            try:
+                return json.loads(lines[-1])
+            except Exception:
+                pass
+        # If parsing fails, write the full output to logfile for debugging but do not print to console
+        try:
+            with open(log_file, "a", encoding="utf-8") as lf:
+                lf.write(f"{datetime.now(timezone.utc).isoformat()}Z WARN: Failed to parse JSON output for {repo_url} ref={ref}\n")
+                lf.write("STDOUT:\n" + (result.stdout or "") + "\n")
+                lf.write("STDERR:\n" + (result.stderr or "") + "\n\n")
+        except Exception:
+            pass
+        return {}
 
 def analyze_projects():
     """Analyze all projects with different thresholds."""
@@ -326,6 +350,11 @@ def analyze_projects():
 
     results = {}
 
+    # concurrency setting (number of parallel containers)
+    concurrency = config.get("public_analyzer", {}).get("concurrency", 4)
+
+    # build list of tasks: (project, index, tag)
+    tasks = []
     for project in projects:
         repo_url = project["repo"]
         tag_list = project.get("tags", [])
@@ -337,11 +366,32 @@ def analyze_projects():
         results[project_id] = {}
 
         for i, tag_name in enumerate(tag_list):
-            try:
-                container_result = run_analysis_in_container(repo_url, ref=tag_name, solution_path=solution_path, custom_build_command=custom_build_command)
-                analysis_result = container_result.get("custom", {})
-                builtin_analysis_result = container_result.get("metrics", {})
-                if analysis_result or builtin_analysis_result:
+            tasks.append((project_id, repo_url, i, tag_name, solution_path, custom_build_command))
+
+    lock = threading.Lock()
+
+    def _run_task(task):
+        project_id, repo_url, i, tag_name, solution_path, custom_build_command = task
+        try:
+            container_result = run_analysis_in_container(repo_url, ref=tag_name, solution_path=solution_path, custom_build_command=custom_build_command)
+            return (project_id, repo_url, i, tag_name, container_result, None)
+        except Exception as e:
+            return (project_id, repo_url, i, tag_name, None, e)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futures = {ex.submit(_run_task, t): t for t in tasks}
+        for fut in concurrent.futures.as_completed(futures):
+            project_id, repo_url, i, tag_name, container_result, err = fut.result()
+            if err:
+                print(f"⚠️ Error analyzing tag {tag_name} in {project_id}: {err}")
+                continue
+
+            analysis_result = container_result.get("custom", {}) if container_result else {}
+            builtin_analysis_result = container_result.get("metrics", {}) if container_result else {}
+
+            if analysis_result or builtin_analysis_result:
+                with lock:
+                    results.setdefault(project_id, {})
                     results[project_id][i] = {
                         "repo_url": repo_url,
                         "tag": tag_name,
@@ -354,8 +404,6 @@ def analyze_projects():
                         "ClassCoupling": builtin_analysis_result.get("ClassCoupling", 0),
                         "SourceLines": builtin_analysis_result.get("SourceLines", 0)
                     }
-            except Exception as e:
-                print(f"⚠️ Error analyzing tag {tag_name} in {repo_url}: {e}")
 
     # Save results
     with open("public_analysis_results.json", "w", encoding="utf-8") as f:
