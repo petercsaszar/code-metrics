@@ -38,7 +38,10 @@ def main():
     log_buffer = io.StringIO()
     with contextlib.redirect_stdout(log_buffer):
         custom = analyzer.run_analyzers(repo_path, solution_path, custom_build_command)
-        metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
+        
+        # Buting Roslyn metrics on non-Windows is not supported
+        if sys.platform.system() == "Windows":
+            metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
 
     logs = log_buffer.getvalue()
     if logs:

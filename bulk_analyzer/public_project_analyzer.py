@@ -3,10 +3,13 @@ import git
 import numpy as np
 import yaml
 import json
+import os
+import git
 import re
 import subprocess
-import concurrent.futures
 import threading
+import concurrent.futures
+from datetime import datetime, timezone
 import tempfile
 import shutil
 from glob import glob
@@ -26,6 +29,8 @@ REPO_LIST_FILE = config["public_analyzer"]["repository_list"]  # File containing
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 CLONE_DIR = config["public_analyzer"]["clone_dir"]
 DOCKER_IMAGE = os.getenv("DOCKER_IMAGE", config.get("docker", {}).get("image", "code-metrics-analyzer"))
+# Heuristic: choose container OS by env override or image tag hint
+CONTAINER_OS = os.getenv("CONTAINER_OS", "windows" if "windows" in DOCKER_IMAGE.lower() else "linux")
 
 def load_commit_list():
     """Load a JSON file that contains a list of repos and their commit hashes."""
@@ -261,21 +266,34 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
     """
     workspace = _workspace_root()
 
-    # Clone into the container filesystem to avoid slow Windows bind mounts
-    in_container_repo_path = "/tmp/repo"
+    # Container OS specifics
+    is_windows = CONTAINER_OS.lower() == "windows"
+    in_container_repo_path = "C:/tmp/repo" if is_windows else "/tmp/repo"
 
     # Build shell script run inside container: clone, checkout ref if present, then run analyzer
-    clone_and_run = (
-        f"set -eu; "
-        f"git clone {repo_url} {in_container_repo_path} || exit 1; "
-    )
-    if ref:
-        clone_and_run += f"cd {in_container_repo_path} && git fetch --tags || true && git checkout {ref} || true; "
-
-    clone_and_run += (
-        f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
-        f"--repo-path {in_container_repo_path} "
-    )
+    if is_windows:
+        clone_and_run = (
+            "$ErrorActionPreference='Stop'; "
+            f"git clone {repo_url} '{in_container_repo_path}' ; "
+            f"Set-Location '{in_container_repo_path}'; "
+        )
+        if ref:
+            clone_and_run += f"git fetch --tags ; try {{ git checkout {ref} }} catch {{}}; "
+        clone_and_run += (
+            f"& C:\\opt\\venv\\Scripts\\python.exe -m bulk_analyzer.container_runner "
+            f"--repo-path '{in_container_repo_path}' "
+        )
+    else:
+        clone_and_run = (
+            f"set -eu; "
+            f"git clone {repo_url} {in_container_repo_path} || exit 1; "
+        )
+        if ref:
+            clone_and_run += f"cd {in_container_repo_path} && git fetch --tags || true && git checkout {ref} || true; "
+        clone_and_run += (
+            f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
+            f"--repo-path {in_container_repo_path} "
+        )
     if solution_path:
         clone_and_run += f"--solution-path {solution_path} "
     if custom_build_command:
@@ -283,18 +301,33 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
         clone_and_run += f'--custom-build-command "{safe_cmd}" '
 
     # Run fully inside the container (no host mounts); analyzer emits JSON to stdout
-    docker_cmd = [
-        "docker", "run", "--rm",
-        "-e", "MSBUILD_PATH=dotnet",
-        # point analyzer config to the copy inside the image
-        "-e", "ANALYZER_CONFIG=/opt/bulk_analyzer/config.yml",
-        "--entrypoint", "/bin/sh",
-        DOCKER_IMAGE,
-        "-c",
-        clone_and_run
-    ]
+    # Honor logging level from host env (default INFO)
+    log_level = os.getenv("LOG_LEVEL", "INFO")
 
-    result = subprocess.run(docker_cmd, capture_output=True, text=True, timeout=timeout)
+    if is_windows:
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-e", "MSBUILD_PATH=dotnet",
+            "-e", f"LOG_LEVEL={log_level}",
+            "-e", "ANALYZER_CONFIG=C:\\opt\\bulk_analyzer\\config.yml",
+            "--entrypoint", "powershell",
+            DOCKER_IMAGE,
+            "-NoProfile", "-Command",
+            clone_and_run
+        ]
+    else:
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-e", "MSBUILD_PATH=dotnet",
+            "-e", f"LOG_LEVEL={log_level}",
+            "-e", "ANALYZER_CONFIG=/opt/bulk_analyzer/config.yml",
+            "--entrypoint", "/bin/sh",
+            DOCKER_IMAGE,
+            "-c",
+            clone_and_run
+        ]
+
+    result = subprocess.run(docker_cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
     # Do not print container logs to the host console. If the container run failed,
     # write full stdout/stderr to the analysis logfile and print a short message.
@@ -351,7 +384,7 @@ def analyze_projects():
     results = {}
 
     # concurrency setting (number of parallel containers)
-    concurrency = config.get("public_analyzer", {}).get("concurrency", 4)
+    concurrency = config.get("public_analyzer", {}).get("concurrency", 6)
 
     # build list of tasks: (project, index, tag)
     tasks = []

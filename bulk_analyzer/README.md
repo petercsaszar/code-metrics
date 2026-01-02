@@ -70,11 +70,89 @@ Create a `config.yml` file. An example configuration (`config.example.yml`) is p
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
 
-### Docker workflow
-- Build the base image once from the project root: `docker build -t code-metrics-analyzer -f docker/Dockerfile .`
-- Run `python public_project_analyzer.py` on the host. The script now spawns a fresh `code-metrics-analyzer` container for every commit/version it evaluates, installing any extra .NET SDKs and workloads on demand inside that container.
-- To execute a single analysis manually (Windows): `docker run --rm --volume="${pwd}:/workspace" --workdir=/workspace/bulk_analyzer --env ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml --env CONFIG_PATH=/workspace/bulk_analyzer/config.yml --env PYTHONPATH=/workspace --entrypoint /opt/venv/bin/python code-metrics-analyzer -m bulk_analyzer.container_runner --repo-path /workspace/bulk_analyzer/public_repos/<repo>`
-- Containers stream their diagnostic logs to stderr and return metrics as JSON to stdout. The host script aggregates the results and writes the familiar JSON outputs.
+### Docker Workflow (Linux & Windows)
+
+**Overview**
+- Build a Docker image that bundles the .NET CodeMetricsAnalyzer and the Python bulk analyzer.
+- Run analyses inside disposable containers to isolate SDK/workloads per repository and version.
+- Use the host `public_project_analyzer.py` to orchestrate per-analysis containers.
+
+**Linux Containers (WSL2/Linux)**
+- Build:
+
+```bash
+docker build -t code-metrics-analyzer -f docker/Dockerfile .
+```
+
+- Manual single repo (bind-mount workspace):
+
+```bash
+docker run --rm --mount type=bind,source="$(pwd)",target=/workspace \
+    -w /workspace/bulk_analyzer \
+    --env ANALYZER_CONFIG=/workspace/bulk_analyzer/config.yml \
+    --env CONFIG_PATH=/workspace/bulk_analyzer/config.yml \
+    --env PYTHONPATH=/workspace \
+    --entrypoint /opt/venv/bin/python \
+    code-metrics-analyzer -m bulk_analyzer.container_runner --repo-path /workspace/bulk_analyzer/public_repos/<repo>
+```
+
+- Orchestrated (host spawns per-analysis containers):
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r bulk_analyzer/requirements.txt
+python bulk_analyzer/public_project_analyzer.py
+```
+
+**Windows Containers**
+- Switch Docker Desktop to Windows containers mode (tray icon → Switch to Windows containers).
+- Build Windows image:
+
+```powershell
+docker build -t code-metrics-analyzer:windows -f docker/Dockerfile.windows .
+```
+
+- Manual single repo (bind-mount workspace):
+
+```powershell
+$W = "$PWD"
+docker run --rm `
+    --mount type=bind,source="$W",target="C:\workspace" `
+    -w "C:\workspace\bulk_analyzer" `
+    --env PYTHONPATH="C:\workspace" `
+    --entrypoint "C:\opt\venv\Scripts\python.exe" `
+    code-metrics-analyzer:windows -m bulk_analyzer.container_runner --repo-path "C:\workspace\bulk_analyzer\public_repos\<repo>"
+```
+
+- Orchestrated (host spawns per-analysis containers):
+
+```powershell
+python bulk_analyzer/public_project_analyzer.py
+```
+
+**Cross-Platform Tag (optional)**
+- Publish separate images for Linux and Windows, then create a manifest so one tag resolves automatically:
+
+```powershell
+# After pushing yourrepo/code-metrics-analyzer:linux and :windows
+docker buildx imagetools create `
+    -t yourrepo/code-metrics-analyzer:latest `
+    yourrepo/code-metrics-analyzer:linux `
+    yourrepo/code-metrics-analyzer:windows
+```
+
+**Notes & Tips**
+- Logging: set `LOG_LEVEL=DEBUG` to capture detailed logs; orchestrator forwards `LOG_LEVEL` into containers.
+- Metrics on Linux: the image runs `Metrics.dll` via `dotnet` when `Metrics.exe` is unavailable, generating `*.Metrics.xml` per project.
+- NuGet cache mount (speed):
+
+```powershell
+$nuget = "$HOME\.nuget\packages"
+docker run --rm -v $nuget:"/root/.nuget/packages" code-metrics-analyzer dotnet nuget locals all -l
+```
+- Prefer `--mount` syntax for robust path handling across platforms.
+- If a repo has no `.sln`, analyzers and built-in metrics will fall back to `.csproj` targets when supported.
 
 ### Environment variables
 
@@ -165,3 +243,25 @@ Notes
 - Use `--mount` (preferred) on Linux to avoid bind mount quoting issues.
 - If you see `/opt/venv/bin/python: cannot execute binary file`, inspect the binary with `file /opt/venv/bin/python` and consider using `/usr/bin/python3` or recreating the virtualenv inside the container (`python3 -m venv /opt/venv`).
 - If analysis appears stuck, run interactively and run the slow `dotnet` commands manually to see prompts or detailed progress.
+
+## Docker image with bundled analyzer
+
+This repository includes a `docker/Dockerfile` that builds a multi-stage image containing the .NET `CodeMetricsAnalyzer` and the Python `bulk_analyzer` package. Building and using the image lets you run multiple analyzer containers in parallel without copying the analyzer sources at runtime.
+
+Build the image locally:
+
+```bash
+docker build -t code-metrics-analyzer:local -f docker/Dockerfile .
+```
+
+Run the public analyzer (the script will launch one or more containers):
+
+```powershell
+$env:DOCKER_IMAGE = 'code-metrics-analyzer:local'
+cd bulk_analyzer
+python public_project_analyzer.py
+```
+
+Concurrency
+- The number of parallel container runs is configurable in `bulk_analyzer/config.yml` under `public_analyzer.concurrency` (default 6).
+- The analyzer image contains the analyzer binaries and Python environment; the host script mounts only a per-run temporary directory for the repository under analysis, enabling safe concurrent runs.

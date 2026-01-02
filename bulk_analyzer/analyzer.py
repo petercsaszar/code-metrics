@@ -27,10 +27,9 @@ ch.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
 ch.setFormatter(formatter)
 root_logger.addHandler(ch)
 
-# File handler (errors and above)
 try:
     fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
-    fh.setLevel(logging.ERROR)
+    fh.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
     fh.setFormatter(formatter)
     root_logger.addHandler(fh)
 except Exception as e:
@@ -117,7 +116,7 @@ def add_metrics_package_to_all_projects(repo_path):
                 print(f"➡️ Adding package to {project_path}")
                 try:
                     subprocess.run(["dotnet", "add", project_path, "package", "Microsoft.CodeAnalysis.Metrics"],
-                                   check=True, capture_output=True, text=True)
+                                   check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 except subprocess.CalledProcessError as e:
                     print(f"❌ Failed to add package to {project_path}: {e.stderr or e.stdout}")
 
@@ -195,7 +194,7 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
         "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
     ]
     logging.info("Running Roslyn metrics command: %s", " ".join(analyze_command))
-    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False)
+    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
     logging.debug("Roslyn metrics exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
     # Find all generated *.Metrics.xml files under this solution's directory
@@ -246,7 +245,7 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
             ]
 
     logging.info("Executing analyzer command: %s", " ".join(analyze_command))
-    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False)
+    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
     logging.debug("Analyzer exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
     if result.returncode != 0:
@@ -285,12 +284,12 @@ def build_solution(repo_path, solution_path, custom_build_command=None):
         build_command = [
         "dotnet", "build", solution_path
         ]
-        subprocess.run(build_command, capture_output=True, text=True, check=True)
+        subprocess.run(build_command, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
     else:
         build_command = f"cd {repo_path} && {custom_build_command}"
-        subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True)
+        subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True, encoding="utf-8", errors="replace")
 
-    subprocess.run(clean_command, capture_output=True, text=True, check=False)
+    subprocess.run(clean_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
 
 def analyze_milestone(milestone_keywords = None):
     """Analyze all milestone commits using Bumpy Road Analyzer."""

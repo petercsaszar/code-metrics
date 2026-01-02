@@ -1,0 +1,62 @@
+# Windows Server Core image with .NET SDK and Python venv
+# Supports running the analyzer in Windows containers mode
+
+# Stage 1: build and publish the CodeMetricsAnalyzer
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022 AS build
+SHELL ["powershell", "-NoProfile", "-Command"]
+WORKDIR C:\\src
+
+# Copy only the analyzer project and restore/publish
+COPY CodeMetricsAnalyzer/ ./CodeMetricsAnalyzer/
+RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
+    dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
+
+# Stage 2: runtime image with dotnet SDK and Python venv
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
+SHELL ["powershell", "-NoProfile", "-Command"]
+
+# Install Chocolatey and dependencies (Python, Git)
+RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 ; \
+    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) ; \
+    choco install -y git ; \
+    choco install -y python --version=3.11.6
+
+# Create directories
+RUN New-Item -ItemType Directory -Path C:\opt | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\opt\bulk_analyzer | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\Tools | Out-Null
+
+# Copy published dotnet analyzer
+COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
+
+# Copy python analyzer package
+COPY bulk_analyzer "C:\\opt\\bulk_analyzer"
+WORKDIR C:\\opt\\bulk_analyzer
+
+# Create venv and install python deps (use venv's python for reliability)
+RUN $ErrorActionPreference = 'Stop' ; \
+    python --version ; \
+    python -m venv C:\opt\venv ; \
+    C:\opt\venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel ; \
+    C:\opt\venv\Scripts\python.exe -m pip install --no-cache-dir -r C:\opt\bulk_analyzer\requirements.txt
+
+# Fetch dotnet-install.ps1 and create a wrapper .cmd so our Python script can call it
+RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Tools\dotnet-install.ps1 ; \
+    Set-ItemProperty -Path C:\Tools\dotnet-install.ps1 -Name IsReadOnly -Value $false ; \
+    New-Item -Path C:\Tools\dotnet-install.cmd -ItemType File -Force | Out-Null ; \
+    Add-Content -Path C:\Tools\dotnet-install.cmd -Value '@echo off' ; \
+    Add-Content -Path C:\Tools\dotnet-install.cmd -Value '"%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File C:\\Tools\\dotnet-install.ps1 %*' ; \
+    $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
+
+# Environment
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;%PATH%"
+ENV PYTHONPATH="C:\\opt"
+ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
+ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
+ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
+ENV DOTNET_INSTALL_DIR="C:\\Program Files\\dotnet"
+
+# Entry point: run the container runner (can be overridden)
+ENTRYPOINT ["C:\\opt\\venv\\Scripts\\python.exe", "-m", "bulk_analyzer.container_runner"]

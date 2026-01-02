@@ -15,7 +15,7 @@ _session_installed_workloads = set()
 
 
 def _run_command(args):
-    return subprocess.run(args, capture_output=True, text=True, check=True)
+    return subprocess.run(args, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
 
 
 def _parse_installed_sdks(raw_output):
