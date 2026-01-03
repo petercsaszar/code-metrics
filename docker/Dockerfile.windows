@@ -22,11 +22,21 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
     choco install -y git ; \
     choco install -y python --version=3.11.6
 
-# Create directories
-RUN New-Item -ItemType Directory -Path C:\opt | Out-Null ; \
-    New-Item -ItemType Directory -Path C:\opt\bulk_analyzer | Out-Null ; \
-    New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer | Out-Null ; \
-    New-Item -ItemType Directory -Path C:\Tools | Out-Null
+# Install Visual Studio Build Tools (MSBuild) directly via official installer
+# Using quiet, wait, and norestart to avoid interactive UI failures in containers
+RUN $ErrorActionPreference = 'Stop' ; \
+    New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
+    $vsUrl = 'https://aka.ms/vs/17/release/vs_buildtools.exe' ; \
+    $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
+    Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
+    Start-Process -FilePath $installer -ArgumentList '--add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
+    Remove-Item $installer -Force
+
+# Create directories (idempotent)
+RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContinue | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\opt\bulk_analyzer -Force -ErrorAction SilentlyContinue | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer -Force -ErrorAction SilentlyContinue | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\Tools -Force -ErrorAction SilentlyContinue | Out-Null
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
@@ -51,12 +61,15 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\BuildTools\\MSBuild\\Current\\Bin;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
 ENV PYTHONPATH="C:\\opt"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
 ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
 ENV DOTNET_INSTALL_DIR="C:\\Program Files\\dotnet"
+ENV DOTNET_ROOT="C:\\Program Files\\dotnet"
+ENV VS_BUILDTOOLS_DIR="C:\\BuildTools"
+ENV MSBUILD_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
 
 # Entry point: run the container runner (can be overridden)
 ENTRYPOINT ["C:\\opt\\venv\\Scripts\\python.exe", "-m", "bulk_analyzer.container_runner"]

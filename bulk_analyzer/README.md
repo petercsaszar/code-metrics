@@ -128,6 +128,8 @@ docker run --rm `
 - Orchestrated (host spawns per-analysis containers):
 
 ```powershell
+$env:CONTAINER_OS = 'windows'
+$env:DOCKER_IMAGE = 'code-metrics-analyzer:windows'
 python bulk_analyzer/public_project_analyzer.py
 ```
 
@@ -160,6 +162,7 @@ The analyzer and the container orchestration use several environment variables a
 
 - **ANALYZER_CONFIG / CONFIG_PATH**: Path to the YAML configuration file used by the analyzer. When running inside the official image these are set to `/opt/bulk_analyzer/config.yml` (see `docker/Dockerfile`). If not set, the code falls back to `config.yml` in the current working directory.
 - **DOCKER_IMAGE**: Override the Docker image name used by `public_project_analyzer.py` when spawning containers. Default: value from the config `docker.image` or `code-metrics-analyzer`.
+- **CONTAINER_OS**: Explicitly select container OS branch (`windows` or `linux`). Default: value from config `docker.os` or `linux` if not set. Set to `windows` when using the Windows image and Windows containers mode.
 - **MSBUILD_PATH**: Path or command to the MSBuild/dotnet binary to use (e.g. `dotnet`). Default: `dotnet`.
 - **ANALYSIS_LOGFILE**: Path where container run failures and error details are appended. Default: `analysis_errors.log` in the workspace root unless overridden.
 - **DUMP_CONTAINER_OUTPUT**: When set to `1`, `true`, or `True` the orchestrator will append full container STDOUT/STDERR to `ANALYSIS_LOGFILE` even on successful runs (useful for debugging noisy containers).
@@ -180,6 +183,7 @@ docker build --build-arg DOTNET_INSTALL_URL=dotnet-install.sh -t code-metrics-an
 
 Notes:
 - Prefer environment variables for per-run overrides (CI, Docker, Kubernetes). Keep a versioned `config.yml` in the repo for stable defaults and to document analyzer settings.
+- You can also set `docker.os` in `config.yml` to `windows` or `linux` to avoid needing `CONTAINER_OS` at runtime.
 - If you enable dynamic SDK installation, ensure `DOTNET_INSTALL_SCRIPT` exists in the image (see `DOTNET_INSTALL_URL` build-arg above) so `ensure_dotnet_environment()` can automatically install SDKs and workloads required by the repository under analysis.
 
 #### Debian / Linux - install and debug

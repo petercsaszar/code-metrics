@@ -191,7 +191,10 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
         logging.warning("Build error, attempting to run metrics anyway: %s", e)
 
     analyze_command = [
-        "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
+    "dotnet", "msbuild", solution_path,
+    "/t:Metrics",
+    "/p:WarningsNotAsErrors=NU1903",
+    "/p:RunAnalyzers=false",
     ]
     logging.info("Running Roslyn metrics command: %s", " ".join(analyze_command))
     result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
