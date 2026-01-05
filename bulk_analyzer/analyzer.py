@@ -115,7 +115,7 @@ def add_metrics_package_to_all_projects(repo_path):
                 project_path = os.path.join(root, file)
                 print(f"➡️ Adding package to {project_path}")
                 try:
-                    subprocess.run(["dotnet", "add", project_path, "package", "Microsoft.CodeAnalysis.Metrics"],
+                    subprocess.run(["dotnet", "add", project_path, "package", "Microsoft.CodeAnalysis.Metrics", "--version", "3.3.3"],
                                    check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
                 except subprocess.CalledProcessError as e:
                     print(f"❌ Failed to add package to {project_path}: {e.stderr or e.stdout}")

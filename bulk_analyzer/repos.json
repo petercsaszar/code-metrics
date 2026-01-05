@@ -4,72 +4,73 @@
             "repo": "https://github.com/AvaloniaUI/Avalonia/",
             "custom_build_command": "git submodule update --init && dotnet build Avalonia.sln",
             "tags": [
-                "11.3.8",
-                "11.2.0",
-                "11.0.0",
-                "1.3.4",
+                "0.4.0",
+                "0.5.0",
                 "1.0.1",
-                "0.4.0"
+                "1.3.4",
+                "11.0.0",
+                "11.2.0",
+                "11.3.8"
             ]
         },
         {
             "repo": "https://github.com/ravendb/ravendb",
             "custom_build_command": "dotnet build --source https://api.nuget.org/v3/index.json",
             "tags": [
-                "7.1.4",
-                "7.0.0",
-                "6.0.0",
-                "5.0.0",
-                "4.0.0",
+                "2.5.2520",
                 "3.0.30153",
-                "2.5.2520"
+                "4.0.0",
+                "5.0.0",
+                "6.0.0",
+                "7.0.0",
+                "7.1.4"
             ]
         },
         {
             "repo": "https://github.com/dotnet/roslyn/",
             "tags": [
-                "Visual-Studio-2022-Version-17.14.20",
-                "Visual-Studio-2022-Version-17.11",
-                "Visual-Studio-2022-Version-17.8",
-                "Visual-Studio-2022-Version-17.5",
+                "Visual-Studio-2022-Version-17.0",
                 "Visual-Studio-2022-Version-17.2",
-                "Visual-Studio-2022-Version-17.0"
+                "Visual-Studio-2022-Version-17.5",
+                "Visual-Studio-2022-Version-17.8",
+                "Visual-Studio-2022-Version-17.11",
+                "Visual-Studio-2022-Version-17.14.20"
             ]
         },
         {
             "repo": "https://github.com/IronLanguages/ironpython3/",
             "custom_build_command": "./make.ps1",
             "tags": [
-                "v3.4.2",
-                "v3.4.1",
-                "v3.4.0",
+                "v3.4.0-alpha1",
                 "v3.4.0-beta1",
-                "v3.4.0-alpha1"
+                "v3.4.0",
+                "v3.4.1",
+                "v3.4.2"
             ]
         },
         {
             "repo": "https://github.com/nopSolutions/nopCommerce/",
             "tags": [
-                "release-4.90.1",
-                "release-4.50.0",
-                "release-4.40",
-                "release-4.30",
+                "release-3.50",
                 "release-4.10",
-                "release-3.50"
+                "release-4.30",
+                "release-4.40",
+                "release-4.50.0",
+                "release-4.90.1"
             ]
         },
         {
             "repo": "https://github.com/xunit/xunit/",
             "tags": [
-                "v3-3.2.0",
-                "v3-2.0.0",
-                "v3-1.0.0",
-                "v2-2.9.0",
-                "v2-2.6.0",
-                "v2-2.5.0",
-                "v2-2.4",
+                "v2-2.0",
                 "v2-2.1",
-                "v2-2.0"
+                "v2-2.4",
+                "v2-2.5.0",
+                "v2-2.6.0",
+                "v2-2.9.0",
+                "v3-1.0.0",
+                "v3-2.0.0",
+                "v3-3.2.0"
             ]
         },
         {
@@ -97,6 +98,7 @@
         {
             "repo": "https://github.com/OpenRA/OpenRA",
             "tags": [
+                "release-20200202",
                 "release-20200503",
                 "release-20210321",
                 "release-20230225",
