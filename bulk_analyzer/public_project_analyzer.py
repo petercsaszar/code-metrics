@@ -29,8 +29,9 @@ REPO_LIST_FILE = config["public_analyzer"]["repository_list"]  # File containing
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 CLONE_DIR = config["public_analyzer"]["clone_dir"]
 DOCKER_IMAGE = os.getenv("DOCKER_IMAGE", config.get("docker", {}).get("image", "code-metrics-analyzer"))
-# Heuristic: choose container OS by env override or image tag hint
-CONTAINER_OS = os.getenv("CONTAINER_OS", "windows" if "windows" in DOCKER_IMAGE.lower() else "linux")
+# Container OS selection: prefer explicit env or config, default to linux
+# Set `CONTAINER_OS` env or `docker.os` in config.yml to "windows" or "linux".
+CONTAINER_OS = os.getenv("CONTAINER_OS", config.get("docker", {}).get("os", "linux"))
 
 def load_commit_list():
     """Load a JSON file that contains a list of repos and their commit hashes."""
@@ -80,7 +81,15 @@ def is_dotnet_core_project(repo, commit):
         for blob in tree.traverse():
             if blob.path.endswith(".csproj"):
                 contents = blob.data_stream.read().decode(errors="ignore")
-                if "netcoreapp" in contents.lower() or "net5.0" in contents.lower() or "net6.0" in contents.lower() or "net7.0" in contents.lower() or "net8.0" in contents.lower()or "net9.0" in contents.lower():
+                lc = contents.lower()
+                if (
+                    "netcoreapp" in lc
+                    or "net5.0" in lc
+                    or "net6.0" in lc
+                    or "net7.0" in lc
+                    or "net8.0" in lc
+                    or "net9.0" in lc
+                ):
                     return True
     except Exception as e:
         print(f"Error reading commit {commit.hexsha}: {e}")
@@ -268,7 +277,7 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
 
     # Container OS specifics
     is_windows = CONTAINER_OS.lower() == "windows"
-    in_container_repo_path = "C:/tmp/repo" if is_windows else "/tmp/repo"
+    in_container_repo_path = "C:\\tmp\\repo" if is_windows else "/tmp/repo"
 
     # Build shell script run inside container: clone, checkout ref if present, then run analyzer
     if is_windows:
@@ -310,7 +319,7 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
             "-e", "MSBUILD_PATH=dotnet",
             "-e", f"LOG_LEVEL={log_level}",
             "-e", "ANALYZER_CONFIG=C:\\opt\\bulk_analyzer\\config.yml",
-            "--entrypoint", "powershell",
+            "--entrypoint", r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
             DOCKER_IMAGE,
             "-NoProfile", "-Command",
             clone_and_run

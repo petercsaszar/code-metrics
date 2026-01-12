@@ -2,6 +2,7 @@ import json
 import os
 import re
 import subprocess
+import platform
 import xml.etree.ElementTree as ET
 from glob import glob
 
@@ -58,7 +59,28 @@ def _install_dotnet(args):
         print(f"⚠️ dotnet-install script not found at {DOTNET_INSTALL_SCRIPT}. Skipping automatic SDK installation.")
         return False
 
-    install_args = [DOTNET_INSTALL_SCRIPT, "--install-dir", DOTNET_INSTALL_DIR, "--no-path"] + args
+    is_windows = platform.system() == "Windows" or DOTNET_INSTALL_SCRIPT.lower().endswith((".ps1", ".cmd"))
+    # Map parameter names for PowerShell script on Windows
+    if is_windows:
+        mapped = []
+        i = 0
+        while i < len(args):
+            key = args[i]
+            val = args[i + 1] if i + 1 < len(args) else None
+            if key == "--channel":
+                mapped.extend(["-Channel", val])
+            elif key == "--version":
+                mapped.extend(["-Version", val])
+            else:
+                if val is not None:
+                    mapped.extend([key, val])
+                else:
+                    mapped.append(key)
+            i += 2 if val is not None else 1
+
+        install_args = [DOTNET_INSTALL_SCRIPT, "-InstallDir", DOTNET_INSTALL_DIR, "-NoPath"] + mapped
+    else:
+        install_args = [DOTNET_INSTALL_SCRIPT, "--install-dir", DOTNET_INSTALL_DIR, "--no-path"] + args
     try:
         subprocess.run(install_args, check=True)
         _refresh_installed_sdks()

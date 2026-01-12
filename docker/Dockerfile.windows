@@ -67,13 +67,16 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\opt\\metrics;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
 ENV PYTHONPATH="C:\\opt"
 ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
 ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
 ENV DOTNET_INSTALL_DIR="C:\\Program Files\\dotnet"
+ENV DOTNET_ROOT="C:\\Program Files\\dotnet"
+ENV VS_BUILDTOOLS_DIR="C:\\BuildTools"
+ENV MSBUILD_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
 
 # Entry point: run the container runner (can be overridden)
 ENTRYPOINT ["C:\\opt\\venv\\Scripts\\python.exe", "-m", "bulk_analyzer.container_runner"]
