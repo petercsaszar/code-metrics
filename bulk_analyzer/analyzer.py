@@ -105,20 +105,29 @@ def checkout_commit(repo_path, commit_id):
 
     print(f"Checked out commit {commit_id}")
 
-def add_metrics_package_to_all_projects(repo_path):
-    """Adds Microsoft.CodeAnalysis.Metrics to all .csproj files in the repo."""
-    print("📦 Adding Microsoft.CodeAnalysis.Metrics to all projects...")
-
-    for root, dirs, files in os.walk(repo_path):
-        for file in files:
-            if file.endswith(".csproj"):
-                project_path = os.path.join(root, file)
-                print(f"➡️ Adding package to {project_path}")
-                try:
-                    subprocess.run(["dotnet", "add", project_path, "package", "Microsoft.CodeAnalysis.Metrics"],
-                                   check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
-                except subprocess.CalledProcessError as e:
-                    print(f"❌ Failed to add package to {project_path}: {e.stderr or e.stdout}")
+def get_metrics_executable():
+    """Get path to Metrics executable (bundled or system)."""
+    # Check bundled locations first
+    bundled_paths = [
+        os.getenv("METRICS_PATH"),  # Allow override via env var
+        "C:\\opt\\metrics\\Metrics.exe",  # Windows container
+        "C:\\Program Files\\Metrics\\Metrics.exe",  # Windows system
+    ]
+    
+    for path in bundled_paths:
+        if path and os.path.isfile(path):
+            return path
+    
+    # Fallback: try 'Metrics' in PATH
+    try:
+        result = subprocess.run(["where", "Metrics"],
+                              capture_output=True, text=True, check=False)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    
+    raise FileNotFoundError("Metrics executable not found. Please ensure it is bundled or installed.")
 
 def aggregate_project_builtin_metrics(metrics_files):
     """Aggregate and average project metrics from multiple metrics.xml files."""
@@ -172,7 +181,7 @@ def aggregate_project_builtin_metrics(metrics_files):
     return averaged_metrics
 
 def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_command=None):
-    """Run Roslyn built-in metrics analyzer."""
+    """Run Roslyn built-in metrics analyzer using Metrics.exe."""
     if not solution_path:
         solution_path = find_solution_file(repo_path)
     else:
@@ -182,27 +191,44 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
         return None
 
     print(f"🚀 Running built-in Roslyn metrics for {repo_path} ...")
-    
-    add_metrics_package_to_all_projects(repo_path)
 
     try:
         build_solution(repo_path, solution_path, custom_build_command)
     except subprocess.CalledProcessError as e:
         logging.warning("Build error, attempting to run metrics anyway: %s", e)
 
+    try:
+        metrics_exe = get_metrics_executable()
+    except FileNotFoundError as e:
+        logging.error("Metrics tool not found: %s", e)
+        return None
+
+    # Run Metrics.exe on the solution
+    output_xml = os.path.join(repo_path, "metrics_output.xml")
     analyze_command = [
-        "dotnet", "msbuild", solution_path, "/t:Metrics", "/p:WarningsNotAsErrors=NU1903 /p:RunAnalyzers=false"
+        metrics_exe,
+        f"/solution:{solution_path}",
+        f"/out:{output_xml}"
     ]
-    logging.info("Running Roslyn metrics command: %s", " ".join(analyze_command))
+    logging.info("Running Metrics.exe command: %s", " ".join(analyze_command))
     result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
-    logging.debug("Roslyn metrics exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
+    logging.debug("Metrics.exe exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
-    # Find all generated *.Metrics.xml files under this solution's directory
-    metrics_files = glob(os.path.join(repo_path, "**", "*.Metrics.xml"), recursive=True)
-    logging.info("Found %d metrics files under %s", len(metrics_files), repo_path)
+    if result.returncode != 0:
+        logging.error("Metrics.exe failed with exit code %s", result.returncode)
+        return None
 
-    aggregated = aggregate_project_builtin_metrics(metrics_files)
+    # Parse the output XML
+    if not os.path.isfile(output_xml):
+        logging.warning("Metrics.exe did not generate output file: %s", output_xml)
+        return None
+
+    aggregated = aggregate_project_builtin_metrics([output_xml])
     if aggregated:
+        try:
+            os.remove(output_xml)
+        except Exception:
+            pass
         return aggregated
 
     return None

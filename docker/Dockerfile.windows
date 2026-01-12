@@ -1,7 +1,19 @@
 # Windows Server Core image with .NET SDK and Python venv
 # Supports running the analyzer in Windows containers mode
 
-# Stage 1: build and publish the CodeMetricsAnalyzer
+# Stage 1: build Metrics.exe from dotnet/roslyn-analyzers
+FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0-windowsservercore-ltsc2022 AS metrics-builder
+SHELL ["powershell", "-NoProfile", "-Command"]
+WORKDIR C:\\metrics-build
+
+RUN git config --global --add safe.directory 'C:/metrics-build' ; \
+    git clone --depth 1 https://github.com/dotnet/roslyn.git . ; \
+    dotnet restore src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj ; \
+    dotnet build src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release ; \
+    New-Item -ItemType Directory -Path C:\metrics\output -Force | Out-Null ; \
+    Get-ChildItem -Path . -Recurse -Include "Metrics.exe" | ForEach-Object { Copy-Item $_.FullName -Destination "C:\metrics\output\Metrics.exe" }
+
+# Stage 2: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022 AS build
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\src
@@ -11,7 +23,7 @@ COPY CodeMetricsAnalyzer/ ./CodeMetricsAnalyzer/
 RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
     dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
 
-# Stage 2: runtime image with dotnet SDK and Python venv
+# Stage 3: runtime image with dotnet SDK and Python venv
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
 SHELL ["powershell", "-NoProfile", "-Command"]
 
@@ -26,7 +38,11 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
 RUN New-Item -ItemType Directory -Path C:\opt | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\bulk_analyzer | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer | Out-Null ; \
+    New-Item -ItemType Directory -Path C:\opt\metrics | Out-Null ; \
     New-Item -ItemType Directory -Path C:\Tools | Out-Null
+
+# Copy Metrics.exe from builder
+COPY --from=metrics-builder "C:\\metrics\\output\\Metrics.exe" "C:\\opt\\metrics\\Metrics.exe"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
@@ -51,8 +67,9 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\opt\\metrics;C:\\Program Files\\dotnet;%PATH%"
 ENV PYTHONPATH="C:\\opt"
+ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
 ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
