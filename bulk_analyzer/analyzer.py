@@ -211,7 +211,24 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
         f"/out:{output_xml}"
     ]
     logging.info("Running Metrics.exe command: %s", " ".join(analyze_command))
-    result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
+
+    # Ensure Metrics.exe can locate MSBuild (preferred VS Build Tools path)
+    env = os.environ.copy()
+    msbuild_bin = env.get("MSBUILD_PATH") or r"C:\\BuildTools\\MSBuild\\Current\\Bin"
+    env["MSBUILD_PATH"] = msbuild_bin
+    env.setdefault("VSINSTALLDIR", r"C:\\BuildTools")
+    # Prepend MSBuild bin so MSBuildLocator can pick it up
+    env["PATH"] = msbuild_bin + os.pathsep + env.get("PATH", "")
+
+    result = subprocess.run(
+        analyze_command,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+        errors="replace",
+        env=env,
+    )
     logging.debug("Metrics.exe exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
     if result.returncode != 0:
