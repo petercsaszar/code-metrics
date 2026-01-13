@@ -32,14 +32,14 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
     choco install -y git ; \
     choco install -y python --version=3.11.6
 
-# Install Visual Studio Build Tools (MSBuild) directly via official installer
+# Install Visual Studio Build Tools (MSBuild) - pre-release channel to match latest Roslyn/MSBuild
 # Using quiet, wait, and norestart to avoid interactive UI failures in containers
 RUN $ErrorActionPreference = 'Stop' ; \
     New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
-    $vsUrl = 'https://aka.ms/vs/17/release/vs_buildtools.exe' ; \
+    $vsUrl = 'https://aka.ms/vs/17/pre/vs_buildtools.exe' ; \
     $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
     Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
-    Start-Process -FilePath $installer -ArgumentList '--add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
+    Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.PreRelease --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
     Remove-Item $installer -Force
 
 # Create directories
@@ -76,7 +76,7 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\BuildTools\\MSBuild\\Current\\Bin;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\BuildTools\\MSBuild\\Current\\Bin;C:\\BuildTools\\Common7\\Tools;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
 ENV PYTHONPATH="C:\\opt"
 ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
