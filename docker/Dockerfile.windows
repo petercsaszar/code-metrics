@@ -9,9 +9,7 @@ WORKDIR C:\\metrics-build
 RUN git config --global --add safe.directory 'C:/metrics-build' ; \
     git clone --depth 1 https://github.com/dotnet/roslyn.git . ; \
     dotnet restore src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj ; \
-    dotnet build src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release ; \
-    New-Item -ItemType Directory -Path C:\metrics\output -Force | Out-Null ; \
-    Get-ChildItem -Path . -Recurse -Include "Metrics.exe" | ForEach-Object { Copy-Item $_.FullName -Destination "C:\metrics\output\Metrics.exe" }
+    dotnet publish src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release -f net472 --self-contained -o C:\metrics\output
 
 # Stage 2: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022 AS build
@@ -34,15 +32,26 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
     choco install -y git ; \
     choco install -y python --version=3.11.6
 
+# Install Visual Studio Build Tools (MSBuild) directly via official installer
+# Using quiet, wait, and norestart to avoid interactive UI failures in containers
+RUN $ErrorActionPreference = 'Stop' ; \
+    New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
+    $vsUrl = 'https://aka.ms/vs/17/release/vs_buildtools.exe' ; \
+    $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
+    Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
+    Start-Process -FilePath $installer -ArgumentList '--add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
+    Remove-Item $installer -Force
+
 # Create directories
-RUN New-Item -ItemType Directory -Path C:\opt | Out-Null ; \
+RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContinue | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\bulk_analyzer | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\metrics | Out-Null ; \
-    New-Item -ItemType Directory -Path C:\Tools | Out-Null
+    New-Item -ItemType Directory -Path C:\Tools -Force -ErrorAction SilentlyContinue | Out-Null
 
-# Copy Metrics.exe from builder
-COPY --from=metrics-builder "C:\\metrics\\output\\Metrics.exe" "C:\\opt\\metrics\\Metrics.exe"
+
+# Copy Metrics.exe and dependencies from builder
+COPY --from=metrics-builder "C:\\metrics\\output" "C:\\opt\\metrics"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
@@ -67,7 +76,7 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\BuildTools\\MSBuild\\Current\\Bin;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
 ENV PYTHONPATH="C:\\opt"
 ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
