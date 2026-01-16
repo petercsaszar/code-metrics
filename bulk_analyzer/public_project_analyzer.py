@@ -316,7 +316,6 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
     if is_windows:
         docker_cmd = [
             "docker", "run", "--rm",
-            "-e", "MSBUILD_PATH=dotnet",
             "-e", f"LOG_LEVEL={log_level}",
             "-e", "ANALYZER_CONFIG=C:\\opt\\bulk_analyzer\\config.yml",
             "--entrypoint", r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
@@ -327,7 +326,6 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
     else:
         docker_cmd = [
             "docker", "run", "--rm",
-            "-e", "MSBUILD_PATH=dotnet",
             "-e", f"LOG_LEVEL={log_level}",
             "-e", "ANALYZER_CONFIG=/opt/bulk_analyzer/config.yml",
             "--entrypoint", "/bin/sh",

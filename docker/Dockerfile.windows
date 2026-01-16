@@ -2,14 +2,15 @@
 # Supports running the analyzer in Windows containers mode
 
 # Stage 1: build Metrics.exe from dotnet/roslyn-analyzers
-FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0-windowsservercore-ltsc2022 AS metrics-builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022 AS metrics-builder
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\metrics-build
 
 RUN git config --global --add safe.directory 'C:/metrics-build' ; \
     git clone --depth 1 https://github.com/dotnet/roslyn.git . ; \
-    dotnet restore src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj ; \
-    dotnet publish src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release -f net472 --self-contained -o C:\metrics\output
+    .\Restore.cmd ; \
+    # dotnet publish src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release -f net472 --self-contained -o C:\metrics\output
+    dotnet msbuild /m /v:m /p:Configuration=Release,OutDir=C:\metrics\output src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj
 
 # Stage 2: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022 AS build
@@ -22,7 +23,8 @@ RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
     dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
 
 # Stage 3: runtime image with dotnet SDK and Python venv
-FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
+FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022
+# FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0-windowsservercore-ltsc2022
 SHELL ["powershell", "-NoProfile", "-Command"]
 
 # Install Chocolatey and dependencies (Python, Git)
@@ -36,10 +38,10 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
 # Using quiet, wait, and norestart to avoid interactive UI failures in containers
 RUN $ErrorActionPreference = 'Stop' ; \
     New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
-    $vsUrl = 'https://aka.ms/vs/17/pre/vs_buildtools.exe' ; \
+    $vsUrl = 'https://aka.ms/vs/stable/vs_buildtools.exe' ; \
     $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
     Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
-    Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.PreRelease --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
+    Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
     Remove-Item $installer -Force
 
 # Create directories
