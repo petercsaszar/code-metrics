@@ -9,11 +9,13 @@ WORKDIR C:\\metrics-build
 RUN git config --global --add safe.directory 'C:/metrics-build' ; \
     git clone --depth 1 https://github.com/dotnet/roslyn.git . ; \
     .\Restore.cmd ; \
+    $env:PATH = 'C:\metrics-build\.dotnet;' + $env:PATH ; \
+    $env:DOTNET_ROOT = 'C:\metrics-build\.dotnet' ; \
     # dotnet publish src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release -f net472 --self-contained -o C:\metrics\output
-    dotnet msbuild /m /v:m /p:Configuration=Release,OutDir=C:\metrics\output src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj
+    C:\metrics-build\.dotnet\dotnet msbuild /m /v:m /p:Configuration=Release,OutDir=C:\metrics\output src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj
 
 # Stage 2: build and publish the CodeMetricsAnalyzer
-FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022 AS build
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\src
 
@@ -23,7 +25,7 @@ RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
     dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
 
 # Stage 3: runtime image with dotnet SDK and Python venv
-FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
 # FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0-windowsservercore-ltsc2022
 SHELL ["powershell", "-NoProfile", "-Command"]
 
@@ -34,15 +36,14 @@ RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
     choco install -y git ; \
     choco install -y python --version=3.11.6
 
-# Install Visual Studio Build Tools (MSBuild) - pre-release channel to match latest Roslyn/MSBuild
-# Using quiet, wait, and norestart to avoid interactive UI failures in containers
-RUN $ErrorActionPreference = 'Stop' ; \
-    New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
-    $vsUrl = 'https://aka.ms/vs/stable/vs_buildtools.exe' ; \
-    $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
-    Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
-    Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
-    Remove-Item $installer -Force
+# Install Visual Studio Build Tools (MSBuild)
+# RUN $ErrorActionPreference = 'Stop' ; \
+#     New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
+#     $vsUrl = 'https://aka.ms/vs/17/release/vs_buildtools.exe' ; \
+#     $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
+#     Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
+#     Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
+#     Remove-Item $installer -Force
 
 # Create directories
 RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContinue | Out-Null ; \
@@ -54,6 +55,9 @@ RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContin
 
 # Copy Metrics.exe and dependencies from builder
 COPY --from=metrics-builder "C:\\metrics\\output" "C:\\opt\\metrics"
+
+# Copy the entire roslyn build directory (includes .dotnet SDK with MSBuild)
+# COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
@@ -78,7 +82,7 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\BuildTools\\MSBuild\\Current\\Bin;C:\\BuildTools\\Common7\\Tools;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;C:\\Program Files\\dotnet;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;%PATH%"
 ENV PYTHONPATH="C:\\opt"
 ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
@@ -86,8 +90,8 @@ ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
 ENV DOTNET_INSTALL_DIR="C:\\Program Files\\dotnet"
 ENV DOTNET_ROOT="C:\\Program Files\\dotnet"
-ENV VS_BUILDTOOLS_DIR="C:\\BuildTools"
-ENV MSBUILD_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
+# ENV MSBUILD_EXE_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
+# ENV MSBUILD_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin"
 
 # Entry point: run the container runner (can be overridden)
 ENTRYPOINT ["C:\\opt\\venv\\Scripts\\python.exe", "-m", "bulk_analyzer.container_runner"]
