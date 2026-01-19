@@ -2,7 +2,7 @@
 # Supports running the analyzer in Windows containers mode
 
 # Stage 1: build Metrics.exe from dotnet/roslyn-analyzers
-FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022 AS metrics-builder
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS metrics-builder
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\metrics-build
 
@@ -15,7 +15,7 @@ RUN git config --global --add safe.directory 'C:/metrics-build' ; \
     C:\metrics-build\.dotnet\dotnet msbuild /m /v:m /p:Configuration=Release,OutDir=C:\metrics\output src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj
 
 # Stage 2: build and publish the CodeMetricsAnalyzer
-FROM mcr.microsoft.com/dotnet/sdk:10.0-windowsservercore-ltsc2022 AS build
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS build
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\src
 
@@ -25,25 +25,29 @@ RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
     dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
 
 # Stage 3: runtime image with dotnet SDK and Python venv
-FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2022
-# FROM mcr.microsoft.com/dotnet/nightly/sdk:10.0-windowsservercore-ltsc2022
+FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019
 SHELL ["powershell", "-NoProfile", "-Command"]
 
-# Install Chocolatey and dependencies (Python, Git)
-RUN Set-ExecutionPolicy Bypass -Scope Process -Force ; \
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072 ; \
-    Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) ; \
-    choco install -y git ; \
-    choco install -y python --version=3.11.6
+# Install Chocolatey
+ENV chocolateyVersion=1.4.4
+RUN \
+    # Download
+    Invoke-WebRequest -OutFile C:\chocolatey-install.ps1 -URI https://community.chocolatey.org/install.ps1; \
+    # Install
+    Invoke-Expression C:\chocolatey-install.ps1; \
+    # Cleanup
+    Remove-Item C:\chocolatey-install.ps1
+
+# Install Python
+RUN choco install -y python --version=3.11.6
 
 # Install Visual Studio Build Tools (MSBuild)
-# RUN $ErrorActionPreference = 'Stop' ; \
-#     New-Item -ItemType Directory -Path C:\\Tools -Force | Out-Null ; \
-#     $vsUrl = 'https://aka.ms/vs/17/release/vs_buildtools.exe' ; \
-#     $installer = 'C:\\Tools\\vs_buildtools.exe' ; \
-#     Invoke-WebRequest -Uri $vsUrl -OutFile $installer ; \
-#     Start-Process -FilePath $installer -ArgumentList '--channelId VisualStudio.17.Release --add Microsoft.VisualStudio.Workload.MSBuildTools --includeRecommended --quiet --wait --norestart --nocache --locale en-US --installPath C:\\BuildTools' -NoNewWindow -Wait ; \
-#     Remove-Item $installer -Force
+RUN powershell -Command \
+    Invoke-WebRequest https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile vs_buildtools.exe ; \
+    Start-Process vs_buildtools.exe -Wait -ArgumentList \
+      '--quiet --wait --norestart --nocache \
+       --add Microsoft.VisualStudio.Workload.MSBuildTools' ; \
+    Remove-Item vs_buildtools.exe
 
 # Create directories
 RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContinue | Out-Null ; \
@@ -52,12 +56,11 @@ RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContin
     New-Item -ItemType Directory -Path C:\opt\metrics | Out-Null ; \
     New-Item -ItemType Directory -Path C:\Tools -Force -ErrorAction SilentlyContinue | Out-Null
 
-
 # Copy Metrics.exe and dependencies from builder
 COPY --from=metrics-builder "C:\\metrics\\output" "C:\\opt\\metrics"
 
 # Copy the entire roslyn build directory (includes .dotnet SDK with MSBuild)
-# COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
+#COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
