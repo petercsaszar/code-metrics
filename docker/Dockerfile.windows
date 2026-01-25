@@ -28,22 +28,19 @@ RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019
 SHELL ["powershell", "-NoProfile", "-Command"]
 
-# Install Chocolatey
+# Install Chocolatey and packages
 ENV chocolateyVersion=1.4.4
 RUN \
     # Download
     Invoke-WebRequest -OutFile C:\chocolatey-install.ps1 -URI https://community.chocolatey.org/install.ps1; \
-    # Install
+    # Install Chocolatey
     Invoke-Expression C:\chocolatey-install.ps1; \
     # Cleanup
-    Remove-Item C:\chocolatey-install.ps1
-
-# Install Python
-RUN choco install -y python --version=3.11.6
-
-# Install Git
-RUN choco install -y git
-
+    Remove-Item C:\chocolatey-install.ps1; \
+    # Install Python
+    choco install -y python --version=3.11.6; \
+    # Install Git
+    choco install -y git
 # Install Visual Studio Build Tools (MSBuild)
 RUN powershell -Command \
         Invoke-WebRequest https://aka.ms/vs/17/release/vs_buildtools.exe -OutFile vs_buildtools.exe ; \
