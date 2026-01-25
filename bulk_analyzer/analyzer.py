@@ -212,13 +212,18 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
     ]
     logging.info("Running Metrics.exe command: %s", " ".join(analyze_command))
 
-    # Ensure Metrics.exe can locate MSBuild (preferred VS Build Tools path)
-    # env = os.environ.copy()
-    # msbuild_bin = env.get("MSBUILD_PATH") or r"C:\\BuildTools\\MSBuild\\Current\\Bin"
-    # env["MSBUILD_PATH"] = msbuild_bin
-    # env.setdefault("VSINSTALLDIR", r"C:\\BuildTools")
-    # # Prepend MSBuild bin so MSBuildLocator can pick it up
-    # env["PATH"] = msbuild_bin + os.pathsep + env.get("PATH", "")
+    # Ensure Metrics.exe uses the SDK dotnet instead of any auto-installed dotnet
+    env = os.environ.copy()
+    # Point to SDK dotnet location (Windows container)
+    sdk_dotnet_dir = r"C:\Program Files\dotnet"
+    if os.path.isdir(sdk_dotnet_dir):
+        # Prepend SDK dotnet to PATH so it's found first
+        env["PATH"] = sdk_dotnet_dir + os.pathsep + env.get("PATH", "")
+        env["DOTNET_ROOT"] = sdk_dotnet_dir
+        # Disable automatic dotnet installation
+        env["DOTNET_INSTALL_DIR"] = sdk_dotnet_dir
+        env["DOTNET_MULTILEVEL_LOOKUP"] = "0"  # Prevent searching other locations
+        logging.debug("Using SDK dotnet from %s", sdk_dotnet_dir)
 
     result = subprocess.run(
         analyze_command,
@@ -227,7 +232,7 @@ def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_comma
         check=False,
         encoding="utf-8",
         errors="replace",
-        # env=env,
+        env=env,
     )
     logging.debug("Metrics.exe exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
 
