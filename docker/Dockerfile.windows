@@ -95,7 +95,7 @@ RUN $ErrorActionPreference = 'Stop' ; \
 
 
 # Copy the entire roslyn build directory (includes .dotnet SDK with MSBuild)
-#COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
+# COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
