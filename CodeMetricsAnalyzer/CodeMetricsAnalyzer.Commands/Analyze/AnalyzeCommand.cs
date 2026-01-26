@@ -19,6 +19,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
     {
         private readonly AnalyzeCommandOptions _options;
         private readonly IResultExporter _resultExporter = new XmlResultExporter();
+        private readonly HtmlReportGenerator _htmlReportGenerator = new HtmlReportGenerator();
         private MSBuildWorkspace? _workspace;
 
         public AnalyzeCommand(AnalyzeCommandOptions options)
@@ -64,6 +65,16 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 {
                     ProjectDiagnostics = results,
                 }, cancellationToken);
+            }
+
+            if (_options.ReportOutput is not null)
+            {
+                ConsoleWriteLineWithColor(ConsoleColor.Cyan, $"Generating HTML report at: {_options.ReportOutput}");
+                await _htmlReportGenerator.GenerateReportAsync(_options.ReportOutput, new ResultExporterArguments
+                {
+                    ProjectDiagnostics = results,
+                }, cancellationToken);
+                ConsoleWriteLineWithColor(ConsoleColor.Green, "HTML report generated successfully!");
             }
         }
 

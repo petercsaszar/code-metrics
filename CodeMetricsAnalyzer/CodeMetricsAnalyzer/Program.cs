@@ -51,6 +51,11 @@ public class Program
             description: "Output file path."
         );
 
+        var reportOutputOption = new Option<string?>(
+            name: "--report-output",
+            description: "Report output folder path."
+        );
+
         var msbuildOption = new Option<string?>(
             name: "--msbuild-path",
             description: "Path to MSBuild installation to use."
@@ -69,6 +74,7 @@ public class Program
         {
             sourceArgument,
             outputOption,
+            reportOutputOption,
             msbuildOption
         };
 
@@ -78,6 +84,7 @@ public class Program
 
             var source = context.ParseResult.GetValueForArgument(sourceArgument);
             var output = context.ParseResult.GetValueForOption(outputOption);
+            var reportOutput = context.ParseResult.GetValueForOption(reportOutputOption);
             var msbuildPath = context.ParseResult.GetValueForOption(msbuildOption);
             var analyzerConfiguration = await LoadAppSettingsAsync(cancellationToken);
 
@@ -85,6 +92,7 @@ public class Program
             {
                 Source = source,
                 Output = output,
+                ReportOutput = reportOutput,
                 MSBuildPath = msbuildPath,
                 AnalyzerConfiguration = analyzerConfiguration
             };

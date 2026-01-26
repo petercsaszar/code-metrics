@@ -1,0 +1,70 @@
+{
+  "Metrics": [
+    {
+      "CommitHash": "a1b2c3d4e5f6g7h8i9j0",
+      "CommitMessage": "Initial commit with baseline metrics",
+      "CommitAuthor": "John Developer",
+      "CommitDate": "2024-01-15T10:30:00Z",
+      "TotalIssues": 45,
+      "ProjectCount": 3,
+      "UniqueIssueTypes": 8,
+      "IssuesByType": {
+        "CM001": 12,
+        "CM002": 8,
+        "CM003": 15,
+        "CM004": 5,
+        "CM005": 3,
+        "CM006": 2
+      },
+      "IssuesBySeverity": {
+        "Error": 5,
+        "Warning": 30,
+        "Info": 10
+      }
+    },
+    {
+      "CommitHash": "b2c3d4e5f6g7h8i9j0k1",
+      "CommitMessage": "Refactor authentication module",
+      "CommitAuthor": "Jane Developer",
+      "CommitDate": "2024-01-16T14:20:00Z",
+      "TotalIssues": 38,
+      "ProjectCount": 3,
+      "UniqueIssueTypes": 7,
+      "IssuesByType": {
+        "CM001": 10,
+        "CM002": 6,
+        "CM003": 12,
+        "CM004": 5,
+        "CM005": 3,
+        "CM006": 2
+      },
+      "IssuesBySeverity": {
+        "Error": 3,
+        "Warning": 25,
+        "Info": 10
+      }
+    },
+    {
+      "CommitHash": "c3d4e5f6g7h8i9j0k1l2",
+      "CommitMessage": "Add comprehensive unit tests",
+      "CommitAuthor": "John Developer",
+      "CommitDate": "2024-01-17T09:15:00Z",
+      "TotalIssues": 32,
+      "ProjectCount": 3,
+      "UniqueIssueTypes": 6,
+      "IssuesByType": {
+        "CM001": 8,
+        "CM002": 5,
+        "CM003": 10,
+        "CM004": 4,
+        "CM005": 3,
+        "CM006": 2
+      },
+      "IssuesBySeverity": {
+        "Error": 2,
+        "Warning": 20,
+        "Info": 10
+      }
+    }
+  ]
+}

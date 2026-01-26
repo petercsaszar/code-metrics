@@ -11,6 +11,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
     {
         public FileInfo Source { get; set; } = null!;
         public string? Output { get; set; }
+        public string? ReportOutput { get; set; }
         public string? MSBuildPath { get; set; }
         public required AnalyzerConfiguration AnalyzerConfiguration { get; set; }
     }
