@@ -1,0 +1,169 @@
+# GitLab CI/CD Configuration for Code Metrics Analyzer
+# Place this file as .gitlab-ci.yml in your repository root
+
+stages:
+  - build
+  - analyze
+  - report
+
+variables:
+  DOTNET_VERSION: "8.0"
+  HISTORY_DIR: "metrics-history"
+  REPORT_DIR: "metrics-report"
+  SOLUTION_FILE: "YourSolution.sln"  # Change this to your solution file
+
+# Build stage - compile your solution
+build:
+  stage: build
+  image: mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION}
+  script:
+    - echo "Building solution..."
+    - dotnet restore ${SOLUTION_FILE}
+    - dotnet build ${SOLUTION_FILE} --no-restore --configuration Release
+  artifacts:
+    paths:
+      - "**/bin/Release/**"
+      - "**/obj/**"
+    expire_in: 1 hour
+
+# Code Metrics Analysis
+code-metrics:
+  stage: analyze
+  image: mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION}
+  dependencies:
+    - build
+  before_script:
+    # Install Code Metrics Analyzer tool
+    - echo "Installing Code Metrics Analyzer..."
+    - dotnet tool install --global CodeMetricsAnalyzer || dotnet tool update --global CodeMetricsAnalyzer
+    - export PATH="$PATH:$HOME/.dotnet/tools"
+    
+    # Verify installation
+    - dotnet tool list -g | grep CodeMetricsAnalyzer || echo "Analyzer installed"
+  
+  script:
+    # Create directories
+    - mkdir -p ${HISTORY_DIR}
+    - mkdir -p ${REPORT_DIR}
+    
+    # Run Code Metrics Analysis
+    - echo "Running Code Metrics Analysis..."
+    - |
+      CodeMetricsAnalyzer analyze ${SOLUTION_FILE} \
+        --report-output ./${REPORT_DIR} \
+        --history-dir ./${HISTORY_DIR} \
+        --output ./metrics.xml
+    
+    # Display summary
+    - echo "========================================"
+    - echo "Code Metrics Analysis Complete!"
+    - echo "========================================"
+    - echo "Report location: ${REPORT_DIR}/index.html"
+    - echo "History stored in: ${HISTORY_DIR}"
+    - echo "========================================"
+  
+  # Persist history across pipeline runs using cache
+  cache:
+    key: metrics-history-${CI_COMMIT_REF_SLUG}
+    paths:
+      - ${HISTORY_DIR}/
+    policy: pull-push
+  
+  # Save artifacts for viewing
+  artifacts:
+    name: "code-metrics-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - ${REPORT_DIR}/
+      - ${HISTORY_DIR}/
+      - metrics.xml
+    reports:
+      # Makes artifacts browsable in GitLab UI
+      junit: ${REPORT_DIR}/*.xml
+    expire_in: 90 days
+    when: always
+    expose_as: "Code Metrics Report"
+  
+  # Run on main branches and merge requests
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH =~ /^(main|master|develop)$/'
+
+# Optional: Publish to GitLab Pages for easy access
+pages:
+  stage: report
+  dependencies:
+    - code-metrics
+  script:
+    - echo "Publishing metrics report to GitLab Pages..."
+    - mkdir -p public
+    - cp -r ${REPORT_DIR}/* public/
+    - echo "Report will be available at: $CI_PAGES_URL"
+  artifacts:
+    paths:
+      - public
+    expire_in: 30 days
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  environment:
+    name: pages
+    url: $CI_PAGES_URL
+
+# Optional: Quality Gate - Fail pipeline if too many issues
+quality-gate:
+  stage: analyze
+  image: mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION}
+  dependencies:
+    - code-metrics
+  script:
+    # Install xmllint for parsing
+    - apt-get update && apt-get install -y libxml2-utils || apk add libxml2-utils
+    
+    # Count issues by severity
+    - |
+      ERRORS=$(xmllint --xpath "count(//Diagnostic[@Severity='Error'])" metrics.xml 2>/dev/null || echo "0")
+      WARNINGS=$(xmllint --xpath "count(//Diagnostic[@Severity='Warning'])" metrics.xml 2>/dev/null || echo "0")
+      
+      echo "========================================"
+      echo "Quality Gate Results"
+      echo "========================================"
+      echo "Errors: $ERRORS"
+      echo "Warnings: $WARNINGS"
+      echo "========================================"
+      
+      # Define thresholds
+      MAX_ERRORS=10
+      MAX_WARNINGS=50
+      
+      # Check thresholds
+      if [ "$ERRORS" -gt "$MAX_ERRORS" ]; then
+        echo "? FAILED: Too many errors ($ERRORS > $MAX_ERRORS)"
+        exit 1
+      fi
+      
+      if [ "$WARNINGS" -gt "$MAX_WARNINGS" ]; then
+        echo "? FAILED: Too many warnings ($WARNINGS > $MAX_WARNINGS)"
+        exit 1
+      fi
+      
+      echo "? PASSED: Code quality meets requirements"
+  
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+  
+  allow_failure: false  # Set to true to make it a warning instead of blocking
+
+# Optional: Notification on quality issues
+notify-on-failure:
+  stage: report
+  image: alpine:latest
+  script:
+    - echo "Quality issues detected! Check the metrics report."
+    # Add your notification logic here (Slack, email, etc.)
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: on_failure
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: on_failure
+  allow_failure: true

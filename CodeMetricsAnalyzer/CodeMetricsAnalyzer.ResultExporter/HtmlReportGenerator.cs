@@ -7,11 +7,11 @@ public class HtmlReportGenerator
 {
     private readonly GitInfoProvider _gitInfoProvider = new();
     
-    public async Task GenerateReportAsync(string outputPath, ResultExporterArguments arguments, CancellationToken cancellationToken = default)
+    public async Task GenerateReportAsync(string outputPath, ResultExporterArguments arguments, string? historyDirectory = null, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(outputPath);
         
-        var historicalData = await LoadAndUpdateHistoricalDataAsync(outputPath, arguments, cancellationToken);
+        var historicalData = await LoadAndUpdateHistoricalDataAsync(outputPath, arguments, historyDirectory, cancellationToken);
         
         await GenerateIndexPageAsync(outputPath, arguments, historicalData, cancellationToken);
         await GenerateSummaryPageAsync(outputPath, arguments, cancellationToken);
@@ -25,10 +25,24 @@ public class HtmlReportGenerator
         await GenerateStylesAsync(outputPath, cancellationToken);
     }
 
-    private async Task<HistoricalDataCollection> LoadAndUpdateHistoricalDataAsync(string outputPath, ResultExporterArguments arguments, CancellationToken cancellationToken)
+    private async Task<HistoricalDataCollection> LoadAndUpdateHistoricalDataAsync(string outputPath, ResultExporterArguments arguments, string? historyDirectory, CancellationToken cancellationToken)
     {
-        var historyFile = Path.Combine(outputPath, "history.json");
-        var historicalData = await HistoricalDataCollection.LoadAsync(historyFile, cancellationToken);
+        // Use provided history directory or fall back to output directory
+        var effectiveHistoryDir = historyDirectory ?? outputPath;
+        
+        HistoricalDataCollection historicalData;
+        
+        // Load from history directory if it exists and has XML files
+        if (Directory.Exists(effectiveHistoryDir) && Directory.GetFiles(effectiveHistoryDir, "*.xml").Any())
+        {
+            historicalData = HistoricalDataCollection.LoadFromDirectory(effectiveHistoryDir);
+        }
+        else
+        {
+            // Fall back to legacy JSON file for backward compatibility
+            var historyFile = Path.Combine(outputPath, "history.json");
+            historicalData = await HistoricalDataCollection.LoadAsync(historyFile, cancellationToken);
+        }
         
         var gitInfo = await _gitInfoProvider.GetCurrentGitInfoAsync(cancellationToken);
         
@@ -41,14 +55,12 @@ public class HtmlReportGenerator
             .SelectMany(p => p.Diagnostics)
             .GroupBy(d => d.Severity)
             .ToDictionary(g => g.Key, g => g.Count());
+        var issueTypeTitles = arguments.ProjectDiagnostics
+            .SelectMany(p => p.Diagnostics)
+            .GroupBy(d => d.Id)
+            .ToDictionary(g => g.Key, g => g.First().Title);
         
-        var existingMetric = historicalData.Metrics.FirstOrDefault(m => m.CommitHash == gitInfo.CommitHash);
-        if (existingMetric != null)
-        {
-            historicalData.Metrics.Remove(existingMetric);
-        }
-        
-        historicalData.Metrics.Add(new HistoricalMetricsDto
+        var newMetric = new HistoricalMetricsDto
         {
             CommitHash = gitInfo.CommitHash,
             CommitMessage = gitInfo.CommitMessage,
@@ -58,15 +70,43 @@ public class HtmlReportGenerator
             ProjectCount = arguments.ProjectDiagnostics.Count,
             UniqueIssueTypes = issuesByType.Count,
             IssuesByType = issuesByType,
-            IssuesBySeverity = issuesBySeverity
-        });
+            IssuesBySeverity = issuesBySeverity,
+            IssueTypeTitles = issueTypeTitles
+        };
+        
+        // Remove existing metric with same commit hash
+        var existingMetric = historicalData.Metrics.FirstOrDefault(m => m.CommitHash == gitInfo.CommitHash);
+        if (existingMetric != null)
+        {
+            historicalData.Metrics.Remove(existingMetric);
+        }
+        
+        historicalData.Metrics.Add(newMetric);
         
         historicalData.Metrics = historicalData.Metrics
             .OrderByDescending(m => m.CommitDate)
             .Take(100)
             .ToList();
         
-        await historicalData.SaveAsync(historyFile, cancellationToken);
+        // Save to history directory if specified
+        if (historyDirectory != null)
+        {
+            Directory.CreateDirectory(historyDirectory);
+            
+            // Generate filename with timestamp and commit hash
+            var timestamp = gitInfo.CommitDate.ToString("yyyyMMdd-HHmmss");
+            var shortHash = gitInfo.CommitHash.Length > 8 ? gitInfo.CommitHash.Substring(0, 8) : gitInfo.CommitHash;
+            var fileName = $"metrics_{timestamp}_{shortHash}.xml";
+            var xmlFilePath = Path.Combine(historyDirectory, fileName);
+            
+            await newMetric.SaveAsXmlAsync(xmlFilePath, cancellationToken);
+        }
+        else
+        {
+            // Fall back to legacy JSON file
+            var historyFile = Path.Combine(outputPath, "history.json");
+            await historicalData.SaveAsync(historyFile, cancellationToken);
+        }
         
         return historicalData;
     }
@@ -203,6 +243,52 @@ public class HtmlReportGenerator
             html.AppendLine("<canvas id=\"severityChart\"></canvas>");
             html.AppendLine("</div>");
             
+            // Add metric type selection section
+            html.AppendLine("<div class=\"chart-container\">");
+            html.AppendLine("<h2>Issue Type Trends</h2>");
+            html.AppendLine("<p>Click on an issue type below to view its historical trend:</p>");
+            html.AppendLine("<div id=\"metricSelector\" class=\"metric-selector\">");
+            
+            // Get all unique issue types across all metrics with their titles
+            var allIssueTypesWithTitles = historicalData.Metrics
+                .Where(m => m.IssueTypeTitles != null)
+                .SelectMany(m => m.IssueTypeTitles!)
+                .GroupBy(kvp => kvp.Key)
+                .Select(g => new { Id = g.Key, Title = g.First().Value })
+                .OrderBy(x => x.Id)
+                .ToList();
+            
+            // Fallback to just IDs if no titles available
+            if (!allIssueTypesWithTitles.Any())
+            {
+                var allIssueTypes = historicalData.Metrics
+                    .SelectMany(m => m.IssuesByType.Keys)
+                    .Distinct()
+                    .OrderBy(k => k)
+                    .ToList();
+                    
+                foreach (var issueType in allIssueTypes)
+                {
+                    html.AppendLine($"<button class=\"metric-button\" onclick=\"showMetricChart('{EscapeHtml(issueType)}')\" title=\"{EscapeHtml(issueType)}\">{EscapeHtml(issueType)}</button>");
+                }
+            }
+            else
+            {
+                foreach (var issueType in allIssueTypesWithTitles)
+                {
+                    html.AppendLine($"<button class=\"metric-button\" onclick=\"showMetricChart('{EscapeHtml(issueType.Id)}')\" title=\"{EscapeHtml(issueType.Title)}\">");
+                    html.AppendLine($"{EscapeHtml(issueType.Id)}<br/><small style=\"font-size: 0.85em; opacity: 0.9;\">{EscapeHtml(issueType.Title)}</small>");
+                    html.AppendLine("</button>");
+                }
+            }
+            
+            html.AppendLine("</div>");
+            html.AppendLine("<div id=\"metricChartContainer\" style=\"display: none; margin-top: 20px;\">");
+            html.AppendLine("<h3 id=\"metricChartTitle\"></h3>");
+            html.AppendLine("<canvas id=\"metricChart\"></canvas>");
+            html.AppendLine("</div>");
+            html.AppendLine("</div>");
+            
             html.AppendLine("<h2>Commit History</h2>");
             html.AppendLine("<table>");
             html.AppendLine("<thead><tr><th>Date</th><th>Commit</th><th>Author</th><th>Total Issues</th><th>Change</th></tr></thead>");
@@ -247,19 +333,6 @@ public class HtmlReportGenerator
         html.AppendLine("</html>");
 
         await File.WriteAllTextAsync(Path.Combine(outputPath, "history.html"), html.ToString(), cancellationToken);
-    }
-
-    private string GetSeverityBreakdownHtml(Dictionary<string, int> issuesBySeverity)
-    {
-        var html = new StringBuilder();
-        
-        foreach (var severity in issuesBySeverity.Keys.OrderBy(s => s))
-        {
-            var count = issuesBySeverity[severity];
-            html.AppendLine($"{EscapeHtml(severity)}: <span class=\"badge badge-{GetSeverityClass(count)}\">{count}</span><br>");
-        }
-        
-        return html.ToString().TrimEnd('<', 'b', 'r', '>');
     }
 
     private async Task GenerateProjectPageAsync(string outputPath, ProjectDiagnosticsDto project, ResultExporterArguments arguments, CancellationToken cancellationToken)
@@ -647,6 +720,57 @@ a:hover {
     font-style: italic;
     padding: 10px;
 }
+
+.metric-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.metric-button {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9em;
+    font-weight: 500;
+    transition: all 0.3s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-align: center;
+    min-width: 120px;
+    line-height: 1.4;
+}
+
+.metric-button small {
+    display: block;
+    margin-top: 4px;
+    font-weight: normal;
+}
+
+.metric-button:hover {
+    background-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.metric-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+#metricChartContainer {
+    padding-top: 20px;
+    border-top: 2px solid #ecf0f1;
+}
+
+#metricChartTitle {
+    color: #2c3e50;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
 ";
 
         await File.WriteAllTextAsync(Path.Combine(outputPath, "styles.css"), css, cancellationToken);
@@ -691,7 +815,13 @@ a:hover {
         var infoData = string.Join(",", orderedMetrics.Select(m => 
             m.IssuesBySeverity.TryGetValue("Info", out var count) ? count : 0));
         
+        // Build historical data for all issue types as JSON
+        var metricsDataJson = MetricChartHelper.BuildMetricsDataJson(orderedMetrics);
+        
         return $@"<script>
+const historicalMetricsData = {metricsDataJson};
+let metricChartInstance = null;
+
 // Total Issues Chart
 const issuesCtx = document.getElementById('issuesChart');
 if (issuesCtx) {{
@@ -729,7 +859,8 @@ if (issuesCtx) {{
                     }}
                 }}
             }}
-        }});
+        }}
+    }});
 }}
 
 // Severity Chart
@@ -785,8 +916,11 @@ if (severityCtx) {{
                     }}
                 }}
             }}
-        }});
+        }}
+    }});
 }}
+
+{MetricChartHelper.GetMetricChartScript()}
 </script>";
     }
 

@@ -9,6 +9,7 @@ using Microsoft.CodeAnalysis.MSBuild;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -70,10 +71,18 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             if (_options.ReportOutput is not null)
             {
                 ConsoleWriteLineWithColor(ConsoleColor.Cyan, $"Generating HTML report at: {_options.ReportOutput}");
-                await _htmlReportGenerator.GenerateReportAsync(_options.ReportOutput, new ResultExporterArguments
-                {
-                    ProjectDiagnostics = results,
-                }, cancellationToken);
+                
+                // Default history directory to reports/history if not specified
+                var historyDir = _options.HistoryDirectory ?? Path.Combine(_options.ReportOutput, "history");
+                
+                await _htmlReportGenerator.GenerateReportAsync(
+                    _options.ReportOutput, 
+                    new ResultExporterArguments
+                    {
+                        ProjectDiagnostics = results,
+                    }, 
+                    historyDir,
+                    cancellationToken);
                 ConsoleWriteLineWithColor(ConsoleColor.Green, "HTML report generated successfully!");
             }
         }
