@@ -237,6 +237,55 @@ After the pipeline runs:
   - Commit history table with changes
 - **Project Pages**: File-by-file analysis with code snippets
 
+### Git Information Detection
+
+The analyzer automatically detects Git commit information from the **solution's directory** by walking up the directory tree to find the Git repository root. This means:
+
+- ? **Works in CI/CD**: No need to change directories before running the analyzer
+- ? **Flexible execution**: Can run analyzer from any directory
+- ? **Nested solutions**: Automatically finds `.git` directory even if solution is in a subdirectory
+- ? **Git submodules**: Supports Git submodules and worktrees (detects `.git` file)
+- ? **Automatic detection**: Finds commit hash, message, author, and date from the repository
+- ?? **Requirement**: The solution directory must be inside a Git repository (anywhere in the directory tree)
+
+**How it works:**
+1. Starts from the solution's directory
+2. Walks up the directory tree looking for `.git` directory or file
+3. Uses the found repository root for all Git operations
+4. Falls back to environment variables if Git is not available
+
+**Example repository structures:**
+```
+# Monorepo with nested solutions
+monorepo/
+??? .git/
+??? backend/
+?   ??? Backend.sln        # ? Finds .git in monorepo/
+??? frontend/
+    ??? Frontend.sln       # ? Finds .git in monorepo/
+
+# Solution in subdirectory
+project/
+??? .git/
+??? docs/
+??? src/
+    ??? App.sln            # ? Finds .git in project/
+
+# Git submodule
+parent/
+??? .git/
+??? submodule/
+    ??? .git               # File pointing to parent
+    ??? Module.sln         # ? Finds .git file
+```
+
+If Git is not available or the solution is not in a Git repo, the analyzer falls back to environment variables:
+- `CI_COMMIT_SHA` - Commit hash
+- `CI_COMMIT_MESSAGE` - Commit message  
+- `CI_COMMIT_AUTHOR` - Author name
+
+These are automatically set by most CI/CD systems (GitLab CI, GitHub Actions, Azure DevOps, etc.).
+
 ### Historical Data
 
 The analyzer stores historical metrics as individual XML files in the `--history-dir`:

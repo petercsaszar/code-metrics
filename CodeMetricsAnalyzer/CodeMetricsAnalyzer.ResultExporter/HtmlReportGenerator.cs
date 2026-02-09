@@ -44,7 +44,8 @@ public class HtmlReportGenerator
             historicalData = await HistoricalDataCollection.LoadAsync(historyFile, cancellationToken);
         }
         
-        var gitInfo = await _gitInfoProvider.GetCurrentGitInfoAsync(cancellationToken);
+        // Get Git info from solution directory
+        var gitInfo = await _gitInfoProvider.GetCurrentGitInfoAsync(arguments.SolutionDirectory, cancellationToken);
         
         var totalIssues = arguments.ProjectDiagnostics.Sum(p => p.Diagnostics.Count);
         var issuesByType = arguments.ProjectDiagnostics
@@ -74,15 +75,22 @@ public class HtmlReportGenerator
             IssueTypeTitles = issueTypeTitles
         };
         
-        // Remove existing metric with same commit hash
+        // Remove existing metric with same commit hash and delete its XML file
         var existingMetric = historicalData.Metrics.FirstOrDefault(m => m.CommitHash == gitInfo.CommitHash);
         if (existingMetric != null)
         {
             historicalData.Metrics.Remove(existingMetric);
+            
+            // Delete the old XML file if using history directory
+            if (historyDirectory != null)
+            {
+                DeleteOldMetricFile(historyDirectory, existingMetric);
+            }
         }
         
         historicalData.Metrics.Add(newMetric);
         
+        // Sort and limit to 100 most recent metrics
         historicalData.Metrics = historicalData.Metrics
             .OrderByDescending(m => m.CommitDate)
             .Take(100)
@@ -99,7 +107,11 @@ public class HtmlReportGenerator
             var fileName = $"metrics_{timestamp}_{shortHash}.xml";
             var xmlFilePath = Path.Combine(historyDirectory, fileName);
             
+            // Save the new metric file
             await newMetric.SaveAsXmlAsync(xmlFilePath, cancellationToken);
+            
+            // Clean up old XML files if we have more than 100
+            CleanupOldHistoryFiles(historyDirectory, historicalData.Metrics);
         }
         else
         {
@@ -109,6 +121,65 @@ public class HtmlReportGenerator
         }
         
         return historicalData;
+    }
+    
+    private void DeleteOldMetricFile(string historyDirectory, HistoricalMetricsDto metric)
+    {
+        try
+        {
+            // Generate the filename that would have been used for this metric
+            var timestamp = metric.CommitDate.ToString("yyyyMMdd-HHmmss");
+            var shortHash = metric.CommitHash.Length > 8 ? metric.CommitHash.Substring(0, 8) : metric.CommitHash;
+            var fileName = $"metrics_{timestamp}_{shortHash}.xml";
+            var filePath = Path.Combine(historyDirectory, fileName);
+            
+            if (File.Exists(filePath))
+            {
+                File.Delete(filePath);
+            }
+        }
+        catch
+        {
+            // Ignore deletion errors - file might not exist or might be in use
+        }
+    }
+    
+    private void CleanupOldHistoryFiles(string historyDirectory, List<HistoricalMetricsDto> currentMetrics)
+    {
+        try
+        {
+            // Get all XML files in the history directory
+            var allXmlFiles = Directory.GetFiles(historyDirectory, "metrics_*.xml");
+            
+            // Create a set of valid file names based on current metrics
+            var validFileNames = new HashSet<string>(currentMetrics.Select(m =>
+            {
+                var timestamp = m.CommitDate.ToString("yyyyMMdd-HHmmss");
+                var shortHash = m.CommitHash.Length > 8 ? m.CommitHash.Substring(0, 8) : m.CommitHash;
+                return $"metrics_{timestamp}_{shortHash}.xml";
+            }));
+            
+            // Delete files that are not in the current metrics list
+            foreach (var file in allXmlFiles)
+            {
+                var fileName = Path.GetFileName(file);
+                if (!validFileNames.Contains(fileName))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch
+                    {
+                        // Ignore deletion errors for individual files
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore cleanup errors - not critical
+        }
     }
 
     private async Task GenerateIndexPageAsync(string outputPath, ResultExporterArguments arguments, HistoricalDataCollection historicalData, CancellationToken cancellationToken)
@@ -194,6 +265,13 @@ public class HtmlReportGenerator
         html.AppendLine("<div class=\"container\">");
         html.AppendLine("<h1>Issue Summary</h1>");
         
+        // Add sunburst diagram
+        html.AppendLine("<div class=\"chart-container\">");
+        html.AppendLine("<h2>Issue Distribution (Sunburst)</h2>");
+        html.AppendLine("<p>Hierarchical view: Projects &rarr; Issue Types &rarr; Severity</p>");
+        html.AppendLine("<div id=\"sunburst\" style=\"display: flex; justify-content: center;\"></div>");
+        html.AppendLine("</div>");
+        
         html.AppendLine("<table>");
         html.AppendLine("<thead><tr><th>Issue ID</th><th>Title</th><th>Count</th><th>Severity</th></tr></thead>");
         html.AppendLine("<tbody>");
@@ -212,6 +290,7 @@ public class HtmlReportGenerator
         html.AppendLine("</tbody>");
         html.AppendLine("</table>");
         html.AppendLine("</div>");
+        html.AppendLine(GetSunburstJavaScript(arguments));
         html.AppendLine("</body>");
         html.AppendLine("</html>");
 
@@ -383,7 +462,7 @@ public class HtmlReportGenerator
                     if (!string.IsNullOrEmpty(snippet))
                     {
                         html.AppendLine("<pre><code>");
-                        html.AppendLine(EscapeHtml(snippet));
+                        html.Append(snippet); // Don't use AppendLine since snippet already has newlines
                         html.AppendLine("</code></pre>");
                     }
                     else
@@ -786,6 +865,7 @@ a:hover {
     <title>{EscapeHtml(title)}</title>
     <link rel=""stylesheet"" href=""styles.css"">
     <script src=""https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js""></script>
+    <script src=""https://d3js.org/d3.v7.min.js""></script>
 </head>";
     }
 
@@ -971,10 +1051,11 @@ if (severityCtx) {{
                 for (int i = methodStart; i <= methodEnd && i < lines.Length; i++)
                 {
                     var lineNum = i + 1;
-                    var prefix = lineNum == lineNumber ? "? " : "  ";
-                    var lineClass = lineNum == lineNumber ? " class=\"highlight-line\"" : "";
+                    var isTargetLine = lineNum == lineNumber;
+                    var lineClass = isTargetLine ? " class=\"highlight-line\"" : "";
+                    var prefix = isTargetLine ? "? " : "  ";
                     
-                    snippet.AppendLine($"<span{lineClass}>{prefix}{lineNum,4} | {lines[i]}</span>");
+                    snippet.Append($"<span{lineClass}>{EscapeHtml(prefix + $"{lineNum,4} | " + lines[i])}</span>\n");
                 }
                 
                 return snippet.ToString();
@@ -990,10 +1071,11 @@ if (severityCtx) {{
                 for (int i = startLine; i < endLine; i++)
                 {
                     var lineNum = i + 1;
-                    var prefix = lineNum == lineNumber ? "? " : "  ";
-                    var lineClass = lineNum == lineNumber ? " class=\"highlight-line\"" : "";
+                    var isTargetLine = lineNum == lineNumber;
+                    var lineClass = isTargetLine ? " class=\"highlight-line\"" : "";
+                    var prefix = isTargetLine ? "? " : "  ";
                     
-                    snippet.AppendLine($"<span{lineClass}>{prefix}{lineNum,4} | {lines[i]}</span>");
+                    snippet.Append($"<span{lineClass}>{EscapeHtml(prefix + $"{lineNum,4} | " + lines[i])}</span>\n");
                 }
                 
                 return snippet.ToString();
@@ -1106,7 +1188,7 @@ if (severityCtx) {{
         
         return (methodStart, methodEnd);
     }
-
+    
     private string GetJavaScript()
     {
         return @"<script>
@@ -1126,4 +1208,179 @@ function toggleSnippet(snippetId) {
 }
 </script>";
     }
+    
+    private string GetSunburstJavaScript(ResultExporterArguments arguments)
+    {
+        // Build hierarchical data structure for sunburst
+        var sunburstData = BuildSunburstData(arguments);
+        
+        var sb = new StringBuilder();
+        sb.AppendLine("<script>");
+        sb.AppendLine("console.log('Sunburst script starting...');");
+        sb.AppendLine($"const sunburstData = {sunburstData};");
+        sb.AppendLine("console.log('Sunburst data:', sunburstData);");
+        sb.AppendLine();
+        sb.AppendLine("if (typeof d3 === 'undefined') {");
+        sb.AppendLine("    console.error('D3.js is not loaded!');");
+        sb.AppendLine("    document.getElementById('sunburst').innerHTML = '<p style=\"text-align: center; padding: 40px; color: #e74c3c;\">D3.js library failed to load. Please check your internet connection.</p>';" );
+        sb.AppendLine("} else {");
+        sb.AppendLine("    console.log('D3.js version:', d3.version);");
+        sb.AppendLine("    if (!sunburstData || !sunburstData.children || sunburstData.children.length === 0) {");
+        sb.AppendLine("        console.warn('No data available for sunburst');");
+        sb.AppendLine("        document.getElementById('sunburst').innerHTML = '<p style=\"text-align: center; padding: 40px; color: #7f8c8d;\">No data available for sunburst visualization</p>';" );
+        sb.AppendLine("    } else {");
+        sb.AppendLine("        console.log('Data validation passed, creating sunburst...');");
+        sb.AppendLine("        try {");
+        sb.AppendLine("            const width = 800;");
+        sb.AppendLine("            const height = 800;");
+        sb.AppendLine("            const radius = Math.min(width, height) / 2;");
+        sb.AppendLine("            console.log('Creating SVG with dimensions:', width, 'x', height);");
+        sb.AppendLine("            const colorScales = {");
+        sb.AppendLine("                project: d3.scaleOrdinal(d3.schemeSet3),");
+        sb.AppendLine("                issueType: d3.scaleOrdinal(d3.schemePastel1),");
+        sb.AppendLine("                severity: d3.scaleOrdinal().domain(['Error', 'Warning', 'Info', 'Hidden']).range(['#e74c3c', '#f39c12', '#3498db', '#95a5a6'])");
+        sb.AppendLine("            };");
+        sb.AppendLine("            const svg = d3.select('#sunburst').append('svg').attr('width', width).attr('height', height).append('g').attr('transform', `translate(${width / 2},${height / 2})`);");
+        sb.AppendLine("            console.log('SVG created');");
+        sb.AppendLine("            const partition = d3.partition().size([2 * Math.PI, radius]);");
+        sb.AppendLine("            const root = d3.hierarchy(sunburstData).sum(d => d.value || 0).sort((a, b) => b.value - a.value);");
+        sb.AppendLine("            partition(root);");
+        sb.AppendLine("            console.log('Hierarchy created, root value:', root.value);");
+        sb.AppendLine("            const arc = d3.arc().startAngle(d => d.x0).endAngle(d => d.x1).innerRadius(d => d.y0).outerRadius(d => d.y1);");
+        sb.AppendLine("            const arcs = root.descendants().filter(d => d.depth > 0);");
+        sb.AppendLine("            console.log('Arcs to draw:', arcs.length);");
+        sb.AppendLine("            svg.selectAll('path').data(arcs).enter().append('path').attr('d', arc)");
+        sb.AppendLine("                .style('fill', d => { if (d.depth === 1) return colorScales.project(d.data.name); if (d.depth === 2) return colorScales.issueType(d.data.name); if (d.depth === 3) return colorScales.severity(d.data.name); return '#ccc'; })");
+        sb.AppendLine("                .style('stroke', '#fff').style('stroke-width', 2).style('opacity', 0.8)");
+        sb.AppendLine("                .on('mouseover', function(event, d) { d3.select(this).style('opacity', 1).style('stroke-width', 3); })");
+        sb.AppendLine("                .on('mouseout', function() { d3.select(this).style('opacity', 0.8).style('stroke-width', 2); });");
+        sb.AppendLine("            console.log('Arcs drawn');");
+        sb.AppendLine("            svg.selectAll('text.arc-label').data(arcs).enter().append('text').attr('class', 'arc-label')");
+        sb.AppendLine("                .attr('transform', d => {");
+        sb.AppendLine("                    const angle = (d.x0 + d.x1) / 2 * 180 / Math.PI - 90;");
+        sb.AppendLine("                    const radius = (d.y0 + d.y1) / 2;");
+        sb.AppendLine("                    const rotation = angle > 90 && angle < 270 ? angle + 180 : angle;");
+        sb.AppendLine("                    return `rotate(${angle}) translate(${radius},0) rotate(${rotation - angle})`;");
+        sb.AppendLine("                })");
+        sb.AppendLine("                .attr('text-anchor', 'middle').attr('dy', '0.35em')");
+        sb.AppendLine("                .style('font-size', d => {");
+        sb.AppendLine("                    const arcAngle = (d.x1 - d.x0) * 180 / Math.PI;");
+        sb.AppendLine("                    const arcWidth = d.y1 - d.y0;");
+        sb.AppendLine("                    if (arcAngle < 5 || arcWidth < 30) return '0px';");
+        sb.AppendLine("                    if (arcAngle < 10) return '8px';");
+        sb.AppendLine("                    if (arcAngle < 20) return '10px';");
+        sb.AppendLine("                    return '12px';");
+        sb.AppendLine("                })");
+        sb.AppendLine("                .style('fill', 'white').style('font-weight', 'bold').style('text-shadow', '1px 1px 2px rgba(0,0,0,0.8)')");
+        sb.AppendLine("                .style('pointer-events', 'all').style('cursor', 'help')");
+        sb.AppendLine("                .text(d => {");
+        sb.AppendLine("                    const arcAngle = (d.x1 - d.x0) * 180 / Math.PI;");
+        sb.AppendLine("                    const arcWidth = d.y1 - d.y0;");
+        sb.AppendLine("                    if (arcAngle < 5 || arcWidth < 30) return '';" );
+        sb.AppendLine("                    const maxLength = Math.floor(arcAngle / 2);");
+        sb.AppendLine("                    const name = d.data.name;");
+        sb.AppendLine("                    if (name.length > maxLength) return name.substring(0, maxLength - 1) + '…';");
+        sb.AppendLine("                    return name;");
+        sb.AppendLine("                })");
+        sb.AppendLine("                .append('title').text(d => {");
+        sb.AppendLine("                    let path = [];");
+        sb.AppendLine("                    let node = d;");
+        sb.AppendLine("                    while (node.parent) {");
+        sb.AppendLine("                        path.unshift(node.data.name);");
+        sb.AppendLine("                        node = node.parent;");
+        sb.AppendLine("                    }");
+        sb.AppendLine("                    return path.join(' ? ') + '\\nCount: ' + d.value;");
+        sb.AppendLine("                });");
+        sb.AppendLine("            console.log('Labels added');");
+        sb.AppendLine("            svg.append('text').attr('text-anchor', 'middle').attr('dy', '-0.5em').style('font-size', '24px').style('font-weight', 'bold').style('fill', '#2c3e50').text('Total Issues');");
+        sb.AppendLine("            svg.append('text').attr('text-anchor', 'middle').attr('dy', '1.5em').style('font-size', '36px').style('font-weight', 'bold').style('fill', '#3498db').text(root.value);");
+        sb.AppendLine("            console.log('Sunburst diagram created successfully!');");
+        sb.AppendLine("        } catch (error) {");
+        sb.AppendLine("            console.error('Error creating sunburst diagram:', error);");
+        sb.AppendLine("            document.getElementById('sunburst').innerHTML = '<p style=\"text-align: center; padding: 40px; color: #e74c3c;\">Error creating visualization. Check console for details.</p>';" );
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        sb.AppendLine("</script>");
+        
+        return sb.ToString();
+    }
+    
+    private string BuildSunburstData(ResultExporterArguments arguments)
+    {
+        var sb = new StringBuilder();
+        sb.Append("{");
+        sb.Append("\"name\":\"Root\",");
+        sb.Append("\"children\":[");
+        
+        var projects = arguments.ProjectDiagnostics
+            .Where(p => p.Diagnostics.Any())
+            .OrderBy(p => p.Name)
+            .ToList();
+        
+        for (int i = 0; i < projects.Count; i++)
+        {
+            if (i > 0) sb.Append(",");
+            
+            var project = projects[i];
+            sb.Append("{");
+            sb.Append($"\"name\":\"{EscapeJson(project.Name)}\",");
+            sb.Append("\"children\":[");
+            
+            var issueGroups = project.Diagnostics
+                .GroupBy(d => d.Id)
+                .OrderBy(g => g.Key)
+                .ToList();
+            
+            for (int j = 0; j < issueGroups.Count; j++)
+            {
+                if (j > 0) sb.Append(",");
+                
+                var issueGroup = issueGroups[j];
+                sb.Append("{");
+                sb.Append($"\"name\":\"{EscapeJson(issueGroup.Key)}\",");
+                sb.Append("\"children\":[");
+                
+                var severityGroups = issueGroup
+                    .GroupBy(d => d.Severity)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+                
+                for (int k = 0; k < severityGroups.Count; k++)
+                {
+                    if (k > 0) sb.Append(",");
+                    
+                    var severityGroup = severityGroups[k];
+                    sb.Append("{");
+                    sb.Append($"\"name\":\"{EscapeJson(severityGroup.Key)}\",");
+                    sb.Append($"\"value\":{severityGroup.Count()}");
+                    sb.Append("}");
+                }
+                
+                sb.Append("]");
+                sb.Append("}");
+            }
+            
+            sb.Append("]");
+            sb.Append("}");
+        }
+        
+        sb.Append("]");
+        sb.Append("}");
+        
+        return sb.ToString();
+    }
+    
+    private string EscapeJson(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        
+        return text
+            .Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("\n", "\\n")
+            .Replace("\r", "\\r")
+            .Replace("\t", "\\t");
+    }
 }
+

@@ -4,14 +4,17 @@ namespace CodeMetricsAnalyzer.ResultExporter;
 
 public class GitInfoProvider
 {
-    public async Task<GitInfo> GetCurrentGitInfoAsync(CancellationToken cancellationToken = default)
+    public async Task<GitInfo> GetCurrentGitInfoAsync(string? workingDirectory = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            var commitHash = await RunGitCommandAsync("rev-parse HEAD", cancellationToken);
-            var commitMessage = await RunGitCommandAsync("log -1 --pretty=%B", cancellationToken);
-            var commitAuthor = await RunGitCommandAsync("log -1 --pretty=%an", cancellationToken);
-            var commitDateStr = await RunGitCommandAsync("log -1 --pretty=%cI", cancellationToken);
+            // Find the Git repository root starting from the working directory
+            var gitRepoDirectory = FindGitRepository(workingDirectory);
+            
+            var commitHash = await RunGitCommandAsync("rev-parse HEAD", gitRepoDirectory, cancellationToken);
+            var commitMessage = await RunGitCommandAsync("log -1 --pretty=%B", gitRepoDirectory, cancellationToken);
+            var commitAuthor = await RunGitCommandAsync("log -1 --pretty=%an", gitRepoDirectory, cancellationToken);
+            var commitDateStr = await RunGitCommandAsync("log -1 --pretty=%cI", gitRepoDirectory, cancellationToken);
             
             return new GitInfo
             {
@@ -33,7 +36,44 @@ public class GitInfoProvider
         }
     }
     
-    private async Task<string?> RunGitCommandAsync(string arguments, CancellationToken cancellationToken)
+    private string? FindGitRepository(string? startDirectory)
+    {
+        try
+        {
+            var directory = startDirectory ?? Directory.GetCurrentDirectory();
+            
+            // Ensure we have a valid directory
+            if (!Directory.Exists(directory))
+            {
+                return Directory.GetCurrentDirectory();
+            }
+            
+            var currentDir = new DirectoryInfo(directory);
+            
+            // Walk up the directory tree looking for .git directory
+            while (currentDir != null)
+            {
+                var gitDir = Path.Combine(currentDir.FullName, ".git");
+                
+                // Check if .git exists (either as directory or file for submodules/worktrees)
+                if (Directory.Exists(gitDir) || File.Exists(gitDir))
+                {
+                    return currentDir.FullName;
+                }
+                
+                currentDir = currentDir.Parent;
+            }
+            
+            // If no .git found, return the starting directory or current directory
+            return directory;
+        }
+        catch
+        {
+            return Directory.GetCurrentDirectory();
+        }
+    }
+    
+    private async Task<string?> RunGitCommandAsync(string arguments, string? workingDirectory, CancellationToken cancellationToken)
     {
         try
         {
@@ -43,6 +83,7 @@ public class GitInfoProvider
                 {
                     FileName = "git",
                     Arguments = arguments,
+                    WorkingDirectory = workingDirectory ?? Directory.GetCurrentDirectory(),
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,

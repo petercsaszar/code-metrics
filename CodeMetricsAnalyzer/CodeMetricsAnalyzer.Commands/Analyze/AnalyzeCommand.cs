@@ -65,6 +65,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 await _resultExporter.ExportResultsAsync(_options.Output, new ResultExporterArguments
                 {
                     ProjectDiagnostics = results,
+                    SolutionDirectory = Path.GetDirectoryName(_options.Source.FullName)
                 }, cancellationToken);
             }
 
@@ -80,6 +81,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                     new ResultExporterArguments
                     {
                         ProjectDiagnostics = results,
+                        SolutionDirectory = Path.GetDirectoryName(_options.Source.FullName)
                     }, 
                     historyDir,
                     cancellationToken);

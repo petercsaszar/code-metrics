@@ -56,6 +56,11 @@ public class Program
             description: "Report output folder path."
         );
 
+        var historyDirectoryOption = new Option<string?>(
+            name: "--history-dir",
+            description: "Directory path for storing historical metrics. Defaults to '<report-output>/history' if report output is specified."
+        );
+
         var msbuildOption = new Option<string?>(
             name: "--msbuild-path",
             description: "Path to MSBuild installation to use."
@@ -75,6 +80,7 @@ public class Program
             sourceArgument,
             outputOption,
             reportOutputOption,
+            historyDirectoryOption,
             msbuildOption
         };
 
@@ -85,6 +91,7 @@ public class Program
             var source = context.ParseResult.GetValueForArgument(sourceArgument);
             var output = context.ParseResult.GetValueForOption(outputOption);
             var reportOutput = context.ParseResult.GetValueForOption(reportOutputOption);
+            var historyDirectory = context.ParseResult.GetValueForOption(historyDirectoryOption);
             var msbuildPath = context.ParseResult.GetValueForOption(msbuildOption);
             var analyzerConfiguration = await LoadAppSettingsAsync(cancellationToken);
 
@@ -93,6 +100,7 @@ public class Program
                 Source = source,
                 Output = output,
                 ReportOutput = reportOutput,
+                HistoryDirectory = historyDirectory,
                 MSBuildPath = msbuildPath,
                 AnalyzerConfiguration = analyzerConfiguration
             };
