@@ -48,5 +48,35 @@ namespace CodeMetricsAnalyzer.Analyzers.Diagnostics
             isEnabledByDefault: true,
             description: "This class has a high LCOM5 score, indicating low cohesion. Consider refactoring."
         );
+
+        public static readonly DiagnosticDescriptor MaintainabilityIndexRule = new DiagnosticDescriptor(
+            id: DiagnosticIdentifiers.MaintainabilityIndex,
+            title: "Low Maintainability Index",
+            messageFormat: "Method '{0}' has a low maintainability index ({1:F2})",
+            category: "CodeMetrics",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: "This method has a low maintainability index, indicating it may be difficult to maintain. Consider refactoring to improve readability and reduce complexity."
+        );
+
+        public static readonly DiagnosticDescriptor CyclomaticComplexityRule = new DiagnosticDescriptor(
+            id: DiagnosticIdentifiers.CyclomaticComplexity,
+            title: "High Cyclomatic Complexity",
+            messageFormat: "Method '{0}' has a high cyclomatic complexity ({1})",
+            category: "CodeMetrics",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: "This method has a high cyclomatic complexity, making it harder to test and maintain. Consider breaking it into smaller methods."
+        );
+
+        public static readonly DiagnosticDescriptor ClassCouplingRule = new DiagnosticDescriptor(
+            id: DiagnosticIdentifiers.ClassCoupling,
+            title: "High Class Coupling",
+            messageFormat: "'{0}' has a high class coupling value ({1})",
+            category: "CodeMetrics",
+            defaultSeverity: DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            description: "This type has high class coupling, indicating it depends on many other types. Consider reducing dependencies to improve maintainability."
+        );
     }
 }

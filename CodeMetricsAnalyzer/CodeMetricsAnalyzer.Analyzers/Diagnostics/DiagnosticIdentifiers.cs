@@ -12,5 +12,8 @@ namespace CodeMetricsAnalyzer.Analyzers.Diagnostics
         public const string FunctionParameterCount = "CMA0002";
         public const string LCOM4 = "CMA0003";
         public const string LCOM5 = "CMA0004";
+        public const string MaintainabilityIndex = "CMA0005";
+        public const string CyclomaticComplexity = "CMA0006";
+        public const string ClassCoupling = "CMA0007";
     }
 }

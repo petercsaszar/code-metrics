@@ -40,7 +40,7 @@ public class Program
                 return;
             }
 
-            if (source.Extension != ".sln" && source.Extension != ".csproj")
+            if (source.Extension != ".sln" && source.Extension != ".slnx" && source.Extension != ".csproj")
             {
                 result.ErrorMessage = "The provided source file is not a project or solution.";
             }

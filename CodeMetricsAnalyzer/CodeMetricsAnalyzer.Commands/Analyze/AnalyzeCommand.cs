@@ -13,6 +13,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace CodeMetricsAnalyzer.Commands.Analyze
 {
@@ -53,7 +54,6 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
         {
             CreateWorkspace();
 
-
             var analyzers = AnalyzerFactory.CreateAnalyzers(_options.AnalyzerConfiguration);
 
             var results = (await AnalyzeAsync(analyzers, cancellationToken)).ToList();
@@ -72,10 +72,10 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             if (_options.ReportOutput is not null)
             {
                 ConsoleWriteLineWithColor(ConsoleColor.Cyan, $"Generating HTML report at: {_options.ReportOutput}");
-                
+
                 // Default history directory to reports/history if not specified
                 var historyDir = _options.HistoryDirectory ?? Path.Combine(_options.ReportOutput, "history");
-                
+
                 await _htmlReportGenerator.GenerateReportAsync(
                     _options.ReportOutput, 
                     new ResultExporterArguments
@@ -91,6 +91,12 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
 
         private async Task<IEnumerable<ProjectDiagnosticsDto>> AnalyzeAsync(ImmutableArray<DiagnosticAnalyzer> analyzers, CancellationToken cancellationToken = default)
         {
+            if (_options.Source.Extension == ".slnx")
+            {
+                // Handle .slnx files by parsing projects manually
+                return await AnalyzeSlnxFileAsync(analyzers, cancellationToken);
+            }
+
             var isSolution = _options.Source.Extension == ".sln";
             if (isSolution)
             {
@@ -105,6 +111,84 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 var result = await AnalyzeProjectAsync(project, analyzers, cancellationToken);
                 return [result];
             }
+        }
+
+        private async Task<IEnumerable<ProjectDiagnosticsDto>> AnalyzeSlnxFileAsync(ImmutableArray<DiagnosticAnalyzer> analyzers, CancellationToken cancellationToken)
+        {
+            ConsoleWriteLineWithColor(ConsoleColor.Cyan, "Parsing .slnx file...");
+
+            var projectPaths = ParseSlnxFile(_options.Source.FullName);
+            var solutionDir = Path.GetDirectoryName(_options.Source.FullName) ?? throw new Exception("Unable to determine solution directory.");
+
+            ConsoleWriteLineWithColor(ConsoleColor.Cyan, $"Found {projectPaths.Count} project(s) in solution.");
+
+            var results = new List<ProjectDiagnosticsDto>();
+
+            foreach (var projectPath in projectPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var fullProjectPath = Path.IsPathRooted(projectPath) 
+                    ? projectPath 
+                    : Path.GetFullPath(Path.Combine(solutionDir, projectPath));
+
+                if (!File.Exists(fullProjectPath))
+                {
+                    ConsoleWriteLineWithColor(ConsoleColor.Yellow, $"Warning: Project file not found: {fullProjectPath}");
+                    continue;
+                }
+
+                try
+                {
+                    var project = await _workspace!.OpenProjectAsync(fullProjectPath, null, cancellationToken);
+                    CheckForWorkspaceDiagnostics();
+
+                    if (project.Language != LanguageNames.CSharp)
+                    {
+                        ConsoleWriteLineWithColor(ConsoleColor.Yellow, $"Skipping non-C# project: {project.Name}");
+                        continue;
+                    }
+
+                    var result = await AnalyzeProjectAsync(project, analyzers, cancellationToken);
+                    results.Add(result);
+
+                    ConsoleWriteLineWithColor(ConsoleColor.Green, $"Analyzed: {project.Name}");
+                }
+                catch (Exception ex)
+                {
+                    ConsoleWriteLineWithColor(ConsoleColor.Yellow, $"Warning: Failed to analyze project {fullProjectPath}: {ex.Message}");
+                }
+            }
+
+            return results;
+        }
+
+        private static List<string> ParseSlnxFile(string slnxPath)
+        {
+            var projectPaths = new List<string>();
+
+            try
+            {
+                var xml = System.Xml.Linq.XDocument.Load(slnxPath);
+                var ns = xml.Root?.Name.Namespace ?? System.Xml.Linq.XNamespace.None;
+
+                // Look for Project elements with Path attribute
+                var projects = xml.Descendants(ns + "Project")
+                    .Select(p => p.Attribute("Path")?.Value)
+                    .Where(path => !string.IsNullOrWhiteSpace(path) && 
+                                   (path!.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) ||
+                                    path.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase) ||
+                                    path.EndsWith(".fsproj", StringComparison.OrdinalIgnoreCase)))
+                    .Select(path => path!);
+
+                projectPaths.AddRange(projects);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Failed to parse .slnx file: {ex.Message}", ex);
+            }
+
+            return projectPaths;
         }
 
         private void CreateWorkspace()
