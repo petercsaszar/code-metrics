@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Operations;
@@ -11,104 +11,22 @@ using Microsoft.CodeAnalysis.Operations;
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
-    public class ClassCouplingAnalyzer : DiagnosticAnalyzer
+    public class ClassCouplingAnalyzer : ClassAnalyzer
     {
-        private readonly AnalyzerConfiguration _config;
-
-        public ClassCouplingAnalyzer(AnalyzerConfiguration config)
+        public ClassCouplingAnalyzer(AnalyzerConfiguration config) : base(config)
         {
-            _config = config;
         }
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
             => ImmutableArray.Create(DiagnosticDescriptors.ClassCouplingRule);
 
-        public override void Initialize(AnalysisContext context)
-        {
-            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
-            context.EnableConcurrentExecution();
-
-            context.RegisterSyntaxNodeAction(AnalyzeMethod, SyntaxKind.MethodDeclaration);
-            context.RegisterSyntaxNodeAction(AnalyzeClass, SyntaxKind.ClassDeclaration);
-        }
-
-        private void AnalyzeMethod(SyntaxNodeAnalysisContext context)
-        {
-            var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-            var semanticModel = context.SemanticModel;
-
-            var methodSymbol = semanticModel.GetDeclaredSymbol(methodDeclaration, context.CancellationToken);
-            if (methodSymbol is null)
-                return;
-
-            var coupledTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-
-            AddCoupledType(coupledTypes, methodSymbol.ReturnType);
-
-            foreach (var parameter in methodSymbol.Parameters)
-            {
-                AddCoupledType(coupledTypes, parameter.Type);
-            }
-
-            foreach (var typeParameter in methodSymbol.TypeParameters)
-            {
-                foreach (var constraintType in typeParameter.ConstraintTypes)
-                {
-                    AddCoupledType(coupledTypes, constraintType);
-                }
-            }
-
-            foreach (var attribute in methodSymbol.GetAttributes())
-            {
-                AddCoupledType(coupledTypes, attribute.AttributeClass);
-            }
-
-            foreach (var attribute in methodSymbol.GetReturnTypeAttributes())
-            {
-                AddCoupledType(coupledTypes, attribute.AttributeClass);
-            }
-
-            if (methodDeclaration.Body != null)
-            {
-                var bodyOperation = semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken);
-                if (bodyOperation != null)
-                {
-                    CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
-                }
-            }
-
-            if (methodDeclaration.ExpressionBody != null)
-            {
-                var expressionOperation = semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken);
-                if (expressionOperation != null)
-                {
-                    CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                }
-            }
-
-            RemoveContainingTypes(methodSymbol, coupledTypes);
-
-            int coupling = coupledTypes.Count;
-
-            if (coupling > _config.ClassCouplingAnalysis.MaximumClassCoupling)
-            {
-                var diagnostic = Diagnostic.Create(
-                    DiagnosticDescriptors.ClassCouplingRule,
-                    methodDeclaration.Identifier.GetLocation(),
-                    methodDeclaration.Identifier.Text,
-                    coupling);
-
-                context.ReportDiagnostic(diagnostic);
-            }
-        }
-
-        private void AnalyzeClass(SyntaxNodeAnalysisContext context)
+        protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
             var classDeclaration = (ClassDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
 
-            var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration, context.CancellationToken);
-            if (classSymbol is null)
+            var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration, context.CancellationToken) as INamedTypeSymbol;
+            if (classSymbol == null)
                 return;
 
             var coupledTypes = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
@@ -135,172 +53,180 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             foreach (var member in classSymbol.GetMembers())
             {
-                switch (member)
+                var field = member as IFieldSymbol;
+                if (field != null)
                 {
-                    case IFieldSymbol field:
-                        AddCoupledType(coupledTypes, field.Type);
-                        break;
+                    AddCoupledType(coupledTypes, field.Type);
+                    continue;
+                }
 
-                    case IPropertySymbol property:
-                        AddCoupledType(coupledTypes, property.Type);
-                        foreach (var parameter in property.Parameters)
+                var property = member as IPropertySymbol;
+                if (property != null)
+                {
+                    AddCoupledType(coupledTypes, property.Type);
+                    foreach (var parameter in property.Parameters)
+                    {
+                        AddCoupledType(coupledTypes, parameter.Type);
+                    }
+
+                    continue;
+                }
+
+                var eventSymbol = member as IEventSymbol;
+                if (eventSymbol != null)
+                {
+                    AddCoupledType(coupledTypes, eventSymbol.Type);
+                    continue;
+                }
+
+                var method = member as IMethodSymbol;
+                if (method != null)
+                {
+                    AddCoupledType(coupledTypes, method.ReturnType);
+
+                    foreach (var parameter in method.Parameters)
+                    {
+                        AddCoupledType(coupledTypes, parameter.Type);
+                    }
+
+                    foreach (var typeParameter in method.TypeParameters)
+                    {
+                        foreach (var constraintType in typeParameter.ConstraintTypes)
                         {
-                            AddCoupledType(coupledTypes, parameter.Type);
+                            AddCoupledType(coupledTypes, constraintType);
                         }
-                        break;
+                    }
 
-                    case IEventSymbol @event:
-                        AddCoupledType(coupledTypes, @event.Type);
-                        break;
+                    foreach (var attribute in method.GetAttributes())
+                    {
+                        AddCoupledType(coupledTypes, attribute.AttributeClass);
+                    }
 
-                    case IMethodSymbol method:
-                        AddCoupledType(coupledTypes, method.ReturnType);
-
-                        foreach (var parameter in method.Parameters)
-                        {
-                            AddCoupledType(coupledTypes, parameter.Type);
-                        }
-
-                        foreach (var typeParameter in method.TypeParameters)
-                        {
-                            foreach (var constraintType in typeParameter.ConstraintTypes)
-                            {
-                                AddCoupledType(coupledTypes, constraintType);
-                            }
-                        }
-
-                        foreach (var attribute in method.GetAttributes())
-                        {
-                            AddCoupledType(coupledTypes, attribute.AttributeClass);
-                        }
-
-                        foreach (var attribute in method.GetReturnTypeAttributes())
-                        {
-                            AddCoupledType(coupledTypes, attribute.AttributeClass);
-                        }
-
-                        break;
+                    foreach (var attribute in method.GetReturnTypeAttributes())
+                    {
+                        AddCoupledType(coupledTypes, attribute.AttributeClass);
+                    }
                 }
             }
 
             foreach (var memberSyntax in classDeclaration.Members)
             {
-                switch (memberSyntax)
+                var methodDeclaration = memberSyntax as MethodDeclarationSyntax;
+                if (methodDeclaration != null)
                 {
-                    case MethodDeclarationSyntax methodDeclaration:
+                    if (methodDeclaration.Body != null)
+                    {
+                        var bodyOperation = semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken);
+                        if (bodyOperation != null)
                         {
-                            if (methodDeclaration.Body != null)
-                            {
-                                var bodyOperation = semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken);
-                                if (bodyOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
-                                }
-                            }
-
-                            if (methodDeclaration.ExpressionBody != null)
-                            {
-                                var expressionOperation = semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken);
-                                if (expressionOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                                }
-                            }
-
-                            break;
+                            CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
                         }
+                    }
 
-                    case PropertyDeclarationSyntax propertyDeclaration:
+                    if (methodDeclaration.ExpressionBody != null)
+                    {
+                        var expressionOperation = semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken);
+                        if (expressionOperation != null)
                         {
-                            if (propertyDeclaration.ExpressionBody != null)
-                            {
-                                var expressionOperation = semanticModel.GetOperation(propertyDeclaration.ExpressionBody.Expression, context.CancellationToken);
-                                if (expressionOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                                }
-                            }
-
-                            if (propertyDeclaration.AccessorList != null)
-                            {
-                                foreach (var accessor in propertyDeclaration.AccessorList.Accessors)
-                                {
-                                    var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
-                                    if (accessorOperation != null)
-                                    {
-                                        CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                                    }
-                                }
-                            }
-
-                            break;
+                            CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
                         }
+                    }
 
-                    case IndexerDeclarationSyntax indexerDeclaration:
+                    continue;
+                }
+
+                var propertyDeclaration = memberSyntax as PropertyDeclarationSyntax;
+                if (propertyDeclaration != null)
+                {
+                    if (propertyDeclaration.ExpressionBody != null)
+                    {
+                        var expressionOperation = semanticModel.GetOperation(propertyDeclaration.ExpressionBody.Expression, context.CancellationToken);
+                        if (expressionOperation != null)
                         {
-                            if (indexerDeclaration.ExpressionBody != null)
-                            {
-                                var expressionOperation = semanticModel.GetOperation(indexerDeclaration.ExpressionBody.Expression, context.CancellationToken);
-                                if (expressionOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                                }
-                            }
-
-                            if (indexerDeclaration.AccessorList != null)
-                            {
-                                foreach (var accessor in indexerDeclaration.AccessorList.Accessors)
-                                {
-                                    var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
-                                    if (accessorOperation != null)
-                                    {
-                                        CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                                    }
-                                }
-                            }
-
-                            break;
+                            CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
                         }
+                    }
 
-                    case EventDeclarationSyntax eventDeclaration:
+                    if (propertyDeclaration.AccessorList != null)
+                    {
+                        foreach (var accessor in propertyDeclaration.AccessorList.Accessors)
                         {
-                            if (eventDeclaration.AccessorList != null)
+                            var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
+                            if (accessorOperation != null)
                             {
-                                foreach (var accessor in eventDeclaration.AccessorList.Accessors)
-                                {
-                                    var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
-                                    if (accessorOperation != null)
-                                    {
-                                        CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                                    }
-                                }
+                                CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
                             }
-
-                            break;
                         }
+                    }
 
-                    case ConstructorDeclarationSyntax constructorDeclaration:
+                    continue;
+                }
+
+                var indexerDeclaration = memberSyntax as IndexerDeclarationSyntax;
+                if (indexerDeclaration != null)
+                {
+                    if (indexerDeclaration.ExpressionBody != null)
+                    {
+                        var expressionOperation = semanticModel.GetOperation(indexerDeclaration.ExpressionBody.Expression, context.CancellationToken);
+                        if (expressionOperation != null)
                         {
-                            if (constructorDeclaration.Body != null)
-                            {
-                                var bodyOperation = semanticModel.GetOperation(constructorDeclaration.Body, context.CancellationToken);
-                                if (bodyOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
-                                }
-                            }
-
-                            if (constructorDeclaration.ExpressionBody != null)
-                            {
-                                var expressionOperation = semanticModel.GetOperation(constructorDeclaration.ExpressionBody.Expression, context.CancellationToken);
-                                if (expressionOperation != null)
-                                {
-                                    CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                                }
-                            }
-
-                            break;
+                            CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
                         }
+                    }
+
+                    if (indexerDeclaration.AccessorList != null)
+                    {
+                        foreach (var accessor in indexerDeclaration.AccessorList.Accessors)
+                        {
+                            var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
+                            if (accessorOperation != null)
+                            {
+                                CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+
+                var eventDeclaration = memberSyntax as EventDeclarationSyntax;
+                if (eventDeclaration != null)
+                {
+                    if (eventDeclaration.AccessorList != null)
+                    {
+                        foreach (var accessor in eventDeclaration.AccessorList.Accessors)
+                        {
+                            var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
+                            if (accessorOperation != null)
+                            {
+                                CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+
+                var constructorDeclaration = memberSyntax as ConstructorDeclarationSyntax;
+                if (constructorDeclaration != null)
+                {
+                    if (constructorDeclaration.Body != null)
+                    {
+                        var bodyOperation = semanticModel.GetOperation(constructorDeclaration.Body, context.CancellationToken);
+                        if (bodyOperation != null)
+                        {
+                            CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
+                        }
+                    }
+
+                    if (constructorDeclaration.ExpressionBody != null)
+                    {
+                        var expressionOperation = semanticModel.GetOperation(constructorDeclaration.ExpressionBody.Expression, context.CancellationToken);
+                        if (expressionOperation != null)
+                        {
+                            CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
+                        }
+                    }
                 }
             }
 
@@ -331,115 +257,170 @@ namespace CodeMetricsAnalyzer.Analyzers
 
                 AddCoupledType(coupledTypes, operation.Type);
 
-                switch (operation)
+                var variableDeclarationGroup = operation as IVariableDeclarationGroupOperation;
+                if (variableDeclarationGroup != null)
                 {
-                    case IVariableDeclarationGroupOperation variableDeclarationGroup:
-                        foreach (var declaration in variableDeclarationGroup.Declarations)
+                    foreach (var declaration in variableDeclarationGroup.Declarations)
+                    {
+                        foreach (var declarator in declaration.Declarators)
                         {
-                            foreach (var declarator in declaration.Declarators)
-                            {
-                                AddCoupledType(coupledTypes, declarator.Symbol?.Type);
-                            }
+                            AddCoupledType(coupledTypes, declarator.Symbol != null ? declarator.Symbol.Type : null);
                         }
-                        break;
+                    }
 
-                    case IInvocationOperation invocation:
-                        AddCoupledType(coupledTypes, invocation.TargetMethod?.ContainingType);
-                        AddCoupledType(coupledTypes, invocation.TargetMethod?.ReturnType);
+                    continue;
+                }
+
+                var invocation = operation as IInvocationOperation;
+                if (invocation != null)
+                {
+                    AddCoupledType(coupledTypes, invocation.TargetMethod != null ? invocation.TargetMethod.ContainingType : null);
+                    AddCoupledType(coupledTypes, invocation.TargetMethod != null ? invocation.TargetMethod.ReturnType : null);
+
+                    if (invocation.TargetMethod != null)
+                    {
                         foreach (var parameter in invocation.TargetMethod.Parameters)
                         {
                             AddCoupledType(coupledTypes, parameter.Type);
                         }
-                        break;
+                    }
 
-                    case IObjectCreationOperation objectCreation:
-                        AddCoupledType(coupledTypes, objectCreation.Type);
-                        AddCoupledType(coupledTypes, objectCreation.Constructor?.ContainingType);
-                        break;
+                    continue;
+                }
 
-                    case IPropertyReferenceOperation propertyReference:
-                        AddCoupledType(coupledTypes, propertyReference.Property?.ContainingType);
-                        AddCoupledType(coupledTypes, propertyReference.Property?.Type);
-                        break;
+                var objectCreation = operation as IObjectCreationOperation;
+                if (objectCreation != null)
+                {
+                    AddCoupledType(coupledTypes, objectCreation.Type);
+                    AddCoupledType(coupledTypes, objectCreation.Constructor != null ? objectCreation.Constructor.ContainingType : null);
+                    continue;
+                }
 
-                    case IFieldReferenceOperation fieldReference:
-                        AddCoupledType(coupledTypes, fieldReference.Field?.ContainingType);
-                        AddCoupledType(coupledTypes, fieldReference.Field?.Type);
-                        break;
+                var propertyReference = operation as IPropertyReferenceOperation;
+                if (propertyReference != null)
+                {
+                    AddCoupledType(coupledTypes, propertyReference.Property != null ? propertyReference.Property.ContainingType : null);
+                    AddCoupledType(coupledTypes, propertyReference.Property != null ? propertyReference.Property.Type : null);
+                    continue;
+                }
 
-                    case IEventReferenceOperation eventReference:
-                        AddCoupledType(coupledTypes, eventReference.Event?.ContainingType);
-                        AddCoupledType(coupledTypes, eventReference.Event?.Type);
-                        break;
+                var fieldReference = operation as IFieldReferenceOperation;
+                if (fieldReference != null)
+                {
+                    AddCoupledType(coupledTypes, fieldReference.Field != null ? fieldReference.Field.ContainingType : null);
+                    AddCoupledType(coupledTypes, fieldReference.Field != null ? fieldReference.Field.Type : null);
+                    continue;
+                }
 
-                    case IMemberReferenceOperation memberReference:
-                        AddCoupledType(coupledTypes, memberReference.Member?.ContainingType);
-                        break;
+                var eventReference = operation as IEventReferenceOperation;
+                if (eventReference != null)
+                {
+                    AddCoupledType(coupledTypes, eventReference.Event != null ? eventReference.Event.ContainingType : null);
+                    AddCoupledType(coupledTypes, eventReference.Event != null ? eventReference.Event.Type : null);
+                    continue;
+                }
 
-                    case ILocalReferenceOperation localReference:
-                        AddCoupledType(coupledTypes, localReference.Local?.Type);
-                        break;
+                var memberReference = operation as IMemberReferenceOperation;
+                if (memberReference != null)
+                {
+                    AddCoupledType(coupledTypes, memberReference.Member != null ? memberReference.Member.ContainingType : null);
+                    continue;
+                }
 
-                    case IParameterReferenceOperation parameterReference:
-                        AddCoupledType(coupledTypes, parameterReference.Parameter?.Type);
-                        break;
+                var localReference = operation as ILocalReferenceOperation;
+                if (localReference != null)
+                {
+                    AddCoupledType(coupledTypes, localReference.Local != null ? localReference.Local.Type : null);
+                    continue;
+                }
 
-                    case IArrayCreationOperation arrayCreation:
-                        AddCoupledType(coupledTypes, arrayCreation.Type);
-                        break;
+                var parameterReference = operation as IParameterReferenceOperation;
+                if (parameterReference != null)
+                {
+                    AddCoupledType(coupledTypes, parameterReference.Parameter != null ? parameterReference.Parameter.Type : null);
+                    continue;
+                }
 
-                    case IConversionOperation conversion:
-                        AddCoupledType(coupledTypes, conversion.Type);
-                        AddCoupledType(coupledTypes, conversion.OperatorMethod?.ContainingType);
-                        break;
+                var arrayCreation = operation as IArrayCreationOperation;
+                if (arrayCreation != null)
+                {
+                    AddCoupledType(coupledTypes, arrayCreation.Type);
+                    continue;
+                }
 
-                    case IIsTypeOperation isTypeOperation:
-                        AddCoupledType(coupledTypes, isTypeOperation.TypeOperand);
-                        break;
+                var conversion = operation as IConversionOperation;
+                if (conversion != null)
+                {
+                    AddCoupledType(coupledTypes, conversion.Type);
+                    AddCoupledType(coupledTypes, conversion.OperatorMethod != null ? conversion.OperatorMethod.ContainingType : null);
+                    continue;
+                }
 
-                    case ITypeOfOperation typeOfOperation:
-                        AddCoupledType(coupledTypes, typeOfOperation.TypeOperand);
-                        break;
+                var isTypeOperation = operation as IIsTypeOperation;
+                if (isTypeOperation != null)
+                {
+                    AddCoupledType(coupledTypes, isTypeOperation.TypeOperand);
+                    continue;
+                }
 
-                    case ICatchClauseOperation catchClause:
-                        AddCoupledType(coupledTypes, catchClause.ExceptionType);
-                        break;
+                var typeOfOperation = operation as ITypeOfOperation;
+                if (typeOfOperation != null)
+                {
+                    AddCoupledType(coupledTypes, typeOfOperation.TypeOperand);
+                    continue;
+                }
 
-                    case IDelegateCreationOperation delegateCreation:
-                        AddCoupledType(coupledTypes, delegateCreation.Type);
-                        break;
+                var catchClause = operation as ICatchClauseOperation;
+                if (catchClause != null)
+                {
+                    AddCoupledType(coupledTypes, catchClause.ExceptionType);
+                    continue;
+                }
 
-                    case IThrowOperation throwOperation:
-                        AddCoupledType(coupledTypes, throwOperation.Exception?.Type);
-                        break;
+                var delegateCreation = operation as IDelegateCreationOperation;
+                if (delegateCreation != null)
+                {
+                    AddCoupledType(coupledTypes, delegateCreation.Type);
+                    continue;
+                }
+
+                var throwOperation = operation as IThrowOperation;
+                if (throwOperation != null)
+                {
+                    AddCoupledType(coupledTypes, throwOperation.Exception != null ? throwOperation.Exception.Type : null);
                 }
             }
         }
 
         private void AddCoupledType(HashSet<INamedTypeSymbol> coupledTypes, ITypeSymbol typeSymbol)
         {
-            if (typeSymbol is null)
+            if (typeSymbol == null)
                 return;
 
-            switch (typeSymbol)
+            var arrayType = typeSymbol as IArrayTypeSymbol;
+            if (arrayType != null)
             {
-                case IArrayTypeSymbol arrayType:
-                    AddCoupledType(coupledTypes, arrayType.ElementType);
-                    return;
+                AddCoupledType(coupledTypes, arrayType.ElementType);
+                return;
+            }
 
-                case IPointerTypeSymbol pointerType:
-                    AddCoupledType(coupledTypes, pointerType.PointedAtType);
-                    return;
+            var pointerType = typeSymbol as IPointerTypeSymbol;
+            if (pointerType != null)
+            {
+                AddCoupledType(coupledTypes, pointerType.PointedAtType);
+                return;
+            }
 
-                case IFunctionPointerTypeSymbol functionPointer:
-                    return;
+            if (typeSymbol is IFunctionPointerTypeSymbol)
+                return;
 
-                case IDynamicTypeSymbol dynamic:
-                    return;
+            if (typeSymbol is IDynamicTypeSymbol)
+                return;
 
-                case INamedTypeSymbol namedType:
-                    AddNamedTypeRecursively(coupledTypes, namedType);
-                    return;
+            var namedType = typeSymbol as INamedTypeSymbol;
+            if (namedType != null)
+            {
+                AddNamedTypeRecursively(coupledTypes, namedType);
             }
         }
 
@@ -535,7 +516,7 @@ namespace CodeMetricsAnalyzer.Analyzers
             foreach (var attribute in type.GetAttributes())
             {
                 var attributeClass = attribute.AttributeClass;
-                if (attributeClass is null)
+                if (attributeClass == null)
                     continue;
 
                 var metadataName = attributeClass.ToDisplayString();
