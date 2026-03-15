@@ -427,9 +427,8 @@ def analyze_projects():
                 continue
 
             analysis_result = container_result.get("custom", {}) if container_result else {}
-            builtin_analysis_result = container_result.get("metrics", {}) if container_result else {}
 
-            if analysis_result or builtin_analysis_result:
+            if analysis_result:
                 with lock:
                     results.setdefault(project_id, {})
                     results[project_id][i] = {
@@ -439,10 +438,9 @@ def analyze_projects():
                         "fpc_score": analysis_result.get("fpc_score", 0),
                         "lcom5_score": analysis_result.get("lcom5_score", 0),
                         "lcom4_score": analysis_result.get("lcom4_score", 0),
-                        "MaintainabilityIndex": builtin_analysis_result.get("MaintainabilityIndex", 0),
-                        "CyclomaticComplexity": builtin_analysis_result.get("CyclomaticComplexity", 0),
-                        "ClassCoupling": builtin_analysis_result.get("ClassCoupling", 0),
-                        "SourceLines": builtin_analysis_result.get("SourceLines", 0)
+                        "maintainability_index_score": analysis_result.get("maintainability_index_score", 0),
+                        "cyclomatic_complexity_score": analysis_result.get("cyclomatic_complexity_score", 0),
+                        "class_coupling_score": analysis_result.get("class_coupling_score", 0),
                     }
 
     # Save results

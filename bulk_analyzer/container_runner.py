@@ -4,7 +4,6 @@ import io
 import json
 import os
 import sys
-import platform
 
 
 def make_absolute(path):
@@ -37,13 +36,9 @@ def main():
 
     analyzer.ANALYZER_DIR = make_absolute(analyzer.ANALYZER_DIR)
     log_buffer = io.StringIO()
-    metrics = {}
+    custom = {}
     with contextlib.redirect_stdout(log_buffer):
         custom = analyzer.run_analyzers(repo_path, solution_path, custom_build_command)
-
-        # Built-in Roslyn metrics may require Windows-specific setup; run on Windows only
-        if platform.system() == "Windows":
-            metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
 
     logs = log_buffer.getvalue()
     if logs:
@@ -53,7 +48,6 @@ def main():
 
     payload = {
         "custom": custom or {},
-        "metrics": metrics or {},
     }
 
     json.dump(payload, sys.stdout)

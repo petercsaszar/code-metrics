@@ -1,5 +1,4 @@
 # Multi-stage Dockerfile that builds the .NET analyzer and bundles the Python analyzer
-# Note: Metrics.exe is Windows-only; metrics collection only runs on Windows containers
 
 # Stage 1: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build

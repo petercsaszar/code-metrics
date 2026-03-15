@@ -1,20 +1,7 @@
 # Windows Server Core image with .NET SDK and Python venv
 # Supports running the analyzer in Windows containers mode
 
-# Stage 1: build Metrics.exe from dotnet/roslyn-analyzers
-FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS metrics-builder
-SHELL ["powershell", "-NoProfile", "-Command"]
-WORKDIR C:\\metrics-build
-
-RUN git config --global --add safe.directory 'C:/metrics-build' ; \
-    git clone --depth 1 https://github.com/dotnet/roslyn.git . ; \
-    .\Restore.cmd ; \
-    $env:PATH = 'C:\metrics-build\.dotnet;' + $env:PATH ; \
-    $env:DOTNET_ROOT = 'C:\metrics-build\.dotnet' ; \
-    # dotnet publish src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj -c Release -f net472 --self-contained -o C:\metrics\output
-    C:\metrics-build\.dotnet\dotnet msbuild /m /v:m /p:Configuration=Release,OutDir=C:\metrics\output src\RoslynAnalyzers\Tools\Metrics\Metrics.csproj
-
-# Stage 2: build and publish the CodeMetricsAnalyzer
+# Stage 1: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS build
 SHELL ["powershell", "-NoProfile", "-Command"]
 WORKDIR C:\\src
@@ -24,7 +11,7 @@ COPY CodeMetricsAnalyzer/ ./CodeMetricsAnalyzer/
 RUN dotnet restore C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer.sln ; \
     dotnet publish C:\src\CodeMetricsAnalyzer\CodeMetricsAnalyzer\CodeMetricsAnalyzer.csproj -c Release -o C:\app\publish
 
-# Stage 3: runtime image with dotnet SDK and Python venv
+# Stage 2: runtime image with dotnet SDK and Python venv
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019
 SHELL ["powershell", "-NoProfile", "-Command"]
 
@@ -57,45 +44,7 @@ RUN powershell -Command \
 RUN New-Item -ItemType Directory -Path C:\opt -Force -ErrorAction SilentlyContinue | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\bulk_analyzer | Out-Null ; \
     New-Item -ItemType Directory -Path C:\opt\CodeMetricsAnalyzer | Out-Null ; \
-    New-Item -ItemType Directory -Path C:\opt\metrics | Out-Null ; \
     New-Item -ItemType Directory -Path C:\Tools -Force -ErrorAction SilentlyContinue | Out-Null
-
-# Copy Metrics.exe and dependencies from builder
-COPY --from=metrics-builder "C:\\metrics\\output" "C:\\opt\\metrics"
-
-# Download MSBuild assemblies (17.14.x) and place them next to Metrics.exe (net472-safe)
-RUN $ErrorActionPreference = 'Stop' ; \
-    $ver = '17.14.8' ; \
-    $pkgDir = 'C:\opt\msbuild-pkgs' ; \
-    New-Item -ItemType Directory -Path $pkgDir -Force | Out-Null ; \
-    Invoke-WebRequest -Uri https://dist.nuget.org/win-x86-commandline/latest/nuget.exe -OutFile C:\Tools\nuget.exe ; \
-    & C:\Tools\nuget.exe install Microsoft.Build -Version $ver -OutputDirectory $pkgDir -ExcludeVersion ; \
-    & C:\Tools\nuget.exe install Microsoft.Build.Framework -Version $ver -OutputDirectory $pkgDir -ExcludeVersion ; \
-    & C:\Tools\nuget.exe install Microsoft.Build.Tasks.Core -Version $ver -OutputDirectory $pkgDir -ExcludeVersion ; \
-    & C:\Tools\nuget.exe install Microsoft.Build.Utilities.Core -Version $ver -OutputDirectory $pkgDir -ExcludeVersion ; \
-    \
-    function Copy-Lib($pkgName, $dllName) { \
-      $base = Join-Path $pkgDir $pkgName ; \
-      $candidates = @('net472','net48','net47','net462','net461','netstandard2.0') ; \
-      foreach ($tfm in $candidates) { \
-        $p = Join-Path $base ('lib\' + $tfm + '\' + $dllName) ; \
-        if (Test-Path $p) { Copy-Item $p -Destination 'C:\opt\metrics' -Force ; return } \
-      } \
-      throw ('Could not find ' + $dllName + ' in ' + $pkgName + ' under expected TFMs.') ; \
-    } ; \
-    \
-    Copy-Lib 'Microsoft.Build' 'Microsoft.Build.dll' ; \
-    Copy-Lib 'Microsoft.Build.Framework' 'Microsoft.Build.Framework.dll' ; \
-    Copy-Lib 'Microsoft.Build.Tasks.Core' 'Microsoft.Build.Tasks.Core.dll' ; \
-    Copy-Lib 'Microsoft.Build.Utilities.Core' 'Microsoft.Build.Utilities.Core.dll' ; \
-    \
-    Write-Host 'Installed MSBuild assemblies:' ; \
-    Get-ChildItem 'C:\opt\metrics' -Filter 'Microsoft.Build*.dll' | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
-
-
-
-# Copy the entire roslyn build directory (includes .dotnet SDK with MSBuild)
-# COPY --from=metrics-builder "C:\\metrics-build" "C:\\roslyn-build"
 
 # Copy published dotnet analyzer
 COPY --from=build "C:\\app\\publish" "C:\\opt\\CodeMetricsAnalyzer"
@@ -120,9 +69,8 @@ RUN Invoke-WebRequest -Uri https://dot.net/v1/dotnet-install.ps1 -OutFile C:\Too
     $env:Path = 'C:\\Program Files\\dotnet;' + $env:Path
 
 # Environment
-ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;C:\\opt\\metrics;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;%PATH%"
+ENV PATH="C:\\opt\\venv\\Scripts;C:\\Program Files\\dotnet;C:\\Program Files\\Git\\cmd;C:\\Program Files\\Git\\bin;C:\\ProgramData\\chocolatey\\bin;%PATH%"
 ENV PYTHONPATH="C:\\opt"
-ENV METRICS_PATH="C:\\opt\\metrics\\Metrics.exe"
 ENV ANALYZER_CONFIG="C:\\opt\\bulk_analyzer\\config.yml"
 ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"

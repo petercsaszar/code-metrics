@@ -5,8 +5,6 @@ import subprocess
 import git
 import yaml
 import requests
-import xml.etree.ElementTree as ET
-from glob import glob
 from .milestone_commit_finder import get_milestone_commits
 from .dotnet_environment import ensure_dotnet_environment
 import logging
@@ -105,157 +103,6 @@ def checkout_commit(repo_path, commit_id):
 
     print(f"Checked out commit {commit_id}")
 
-def get_metrics_executable():
-    """Get path to Metrics executable (bundled or system)."""
-    # Check bundled locations first
-    bundled_paths = [
-        os.getenv("METRICS_PATH"),  # Allow override via env var
-        "C:\\opt\\metrics\\Metrics.exe",  # Windows container
-        "C:\\Program Files\\Metrics\\Metrics.exe",  # Windows system
-    ]
-    
-    for path in bundled_paths:
-        if path and os.path.isfile(path):
-            return path
-    
-    # Fallback: try 'Metrics' in PATH
-    try:
-        result = subprocess.run(["where", "Metrics"],
-                              capture_output=True, text=True, check=False)
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
-    
-    raise FileNotFoundError("Metrics executable not found. Please ensure it is bundled or installed.")
-
-def aggregate_project_builtin_metrics(metrics_files):
-    """Aggregate and average project metrics from multiple metrics.xml files."""
-    sum_metrics = {
-        "MaintainabilityIndex": 0,
-        "CyclomaticComplexity": 0,
-        "ClassCoupling": 0,
-        "DepthOfInheritance": 0,
-    }
-
-    total_metrics = {
-        "SourceLines": 0,
-        "ExecutableLines": 0,
-    }
-
-    contributing_projects = 0
-
-    for file in metrics_files:
-        try:
-            tree = ET.parse(file)
-            root = tree.getroot()
-            metrics = root.find(".//Metrics")
-            if metrics is None:
-                continue
-
-            for metric in metrics.findall("Metric"):
-                name = metric.attrib.get("Name")
-                value = metric.attrib.get("Value")
-                if name in sum_metrics:
-                    sum_metrics[name] += int(value)
-                elif name in total_metrics:
-                    total_metrics[name] += int(value)
-
-            contributing_projects += 1
-
-        except Exception as e:
-            print(f"⚠️ Error parsing {file}: {e}")
-
-    if contributing_projects == 0:
-        return None
-
-    # Compute averages
-    averaged_metrics = {
-        name: round(value / contributing_projects)
-        for name, value in sum_metrics.items()
-    }
-
-    # Merge totals
-    averaged_metrics.update(total_metrics)
-
-    return averaged_metrics
-
-def run_builtin_roslyn_metrics(repo_path, solution_path=None, custom_build_command=None):
-    """Run Roslyn built-in metrics analyzer using Metrics.exe."""
-    if not solution_path:
-        solution_path = find_solution_file(repo_path)
-    else:
-        solution_path = os.path.join(repo_path, solution_path)
-    if not solution_path:
-        print("❌ No solution found.")
-        return None
-
-    print(f"🚀 Running built-in Roslyn metrics for {repo_path} ...")
-
-    try:
-        build_solution(repo_path, solution_path, custom_build_command)
-    except subprocess.CalledProcessError as e:
-        logging.warning("Build error, attempting to run metrics anyway: %s", e)
-
-    try:
-        metrics_exe = get_metrics_executable()
-    except FileNotFoundError as e:
-        logging.error("Metrics tool not found: %s", e)
-        return None
-
-    # Run Metrics.exe on the solution
-    output_xml = os.path.join(repo_path, "metrics_output.xml")
-    analyze_command = [
-        metrics_exe,
-        f"/solution:{solution_path}",
-        f"/out:{output_xml}"
-    ]
-    logging.info("Running Metrics.exe command: %s", " ".join(analyze_command))
-
-    # Ensure Metrics.exe uses the SDK dotnet instead of any auto-installed dotnet
-    env = os.environ.copy()
-    # Point to SDK dotnet location (Windows container)
-    sdk_dotnet_dir = r"C:\Program Files\dotnet"
-    if os.path.isdir(sdk_dotnet_dir):
-        # Prepend SDK dotnet to PATH so it's found first
-        env["PATH"] = sdk_dotnet_dir + os.pathsep + env.get("PATH", "")
-        env["DOTNET_ROOT"] = sdk_dotnet_dir
-        # Disable automatic dotnet installation
-        env["DOTNET_INSTALL_DIR"] = sdk_dotnet_dir
-        env["DOTNET_MULTILEVEL_LOOKUP"] = "0"  # Prevent searching other locations
-        logging.debug("Using SDK dotnet from %s", sdk_dotnet_dir)
-
-    result = subprocess.run(
-        analyze_command,
-        capture_output=True,
-        text=True,
-        check=False,
-        encoding="utf-8",
-        errors="replace",
-        env=env,
-    )
-    logging.debug("Metrics.exe exit=%s stdout=\n%s\nstderr=\n%s", result.returncode, result.stdout, result.stderr)
-
-    if result.returncode != 0:
-        logging.error("Metrics.exe failed with exit code %s", result.returncode)
-        return None
-
-    # Parse the output XML
-    if not os.path.isfile(output_xml):
-        logging.warning("Metrics.exe did not generate output file: %s", output_xml)
-        return None
-
-    aggregated = aggregate_project_builtin_metrics([output_xml])
-    if aggregated:
-        try:
-            os.remove(output_xml)
-        except Exception:
-            pass
-        return aggregated
-
-    return None
-   
-
 def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
     """Run the roslyn analyzers."""
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
@@ -306,17 +153,26 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
     match_fpc = re.search(r"(\d+)\s+CMA0002", result.stdout)
     match_lcom5 = re.search(r"(\d+)\s+CMA0004", result.stdout)
     match_lcom4 = re.search(r"(\d+)\s+CMA0003", result.stdout)
+    match_maintainability_index = re.search(r"(\d+)\s+CMA0005", result.stdout)
+    match_cyclomatic_complexity = re.search(r"(\d+)\s+CMA0006", result.stdout)
+    match_class_coupling = re.search(r"(\d+)\s+CMA0007", result.stdout)
 
     bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
     fpc_score = int(match_fpc.group(1)) if match_fpc else 0
     lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
     lcom4_score = int(match_lcom4.group(1)) if match_lcom4 else 0
+    maintainability_index_score = int(match_maintainability_index.group(1)) if match_maintainability_index else 0
+    cyclomatic_complexity_score = int(match_cyclomatic_complexity.group(1)) if match_cyclomatic_complexity else 0
+    class_coupling_score = int(match_class_coupling.group(1)) if match_class_coupling else 0
 
     formatted_result = {
         "bumpy_score": bumpy_score,
         "fpc_score": fpc_score,
         "lcom4_score": lcom4_score,
-        "lcom5_score": lcom5_score
+        "lcom5_score": lcom5_score,
+        "maintainability_index_score": maintainability_index_score,
+        "cyclomatic_complexity_score": cyclomatic_complexity_score,
+        "class_coupling_score": class_coupling_score
     }
 
     return formatted_result
@@ -364,7 +220,6 @@ def analyze_milestone(milestone_keywords = None):
 
             checkout_commit(repo_path, commit_id)
             analysis_result = run_analyzers(repo_path)
-            builtin_analysis_result  = run_builtin_roslyn_metrics(repo_path)
 
             if analysis_result:
                 results[project_id] = {
@@ -374,12 +229,9 @@ def analyze_milestone(milestone_keywords = None):
                     "fpc_score": analysis_result["fpc_score"],
                     "lcom5_score": analysis_result["lcom5_score"],
                     "lcom4_score": analysis_result["lcom4_score"],
-                    "MaintainabilityIndex": builtin_analysis_result["MaintainabilityIndex"],
-                    "CyclomaticComplexity": builtin_analysis_result["CyclomaticComplexity"],
-                    "ClassCoupling": builtin_analysis_result["ClassCoupling"],
-                    "DepthOfInheritance": builtin_analysis_result["DepthOfInheritance"],
-                    "SourceLines": builtin_analysis_result["SourceLines"],
-                    "ExecutableLines": builtin_analysis_result["ExecutableLines"],
+                    "maintainability_index_score": analysis_result["maintainability_index_score"],
+                    "cyclomatic_complexity_score": analysis_result["cyclomatic_complexity_score"],
+                    "class_coupling_score": analysis_result["class_coupling_score"],
                 }
         except Exception as e:
             print(f"❌ Error analyzing project {project_id}: {e}")

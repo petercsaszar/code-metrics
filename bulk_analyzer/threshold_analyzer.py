@@ -44,6 +44,9 @@ def update_config(new_threshold):
     conf["FunctionParameterCountAnalysis"]["ParameterCountThreshold"] = new_threshold
     conf["LCOM5Analysis"]["CohesionThreshold"] = new_threshold / 10 # normalize value beetween 0 and 1
     conf["LCOM4Analysis"]["CohesionThreshold"] = new_threshold
+    conf["MaintainabilityIndexAnalysis"]["MinimumMaintainabilityIndex"] = new_threshold * 10
+    conf["CyclomaticComplexityAnalysis"]["MaximumComplexity"] = new_threshold
+    conf["ClassCouplingAnalysis"]["MaximumClassCoupling"] = new_threshold
 
     with open(config_path, "w", encoding="utf8") as f:
         json.dump(conf, f, indent=4)
@@ -67,7 +70,10 @@ def analyze_projects():
                     "bumpy_score": analysis_result["bumpy_score"],
                     "fpc_score": analysis_result["fpc_score"],
                     "lcom4_score": analysis_result["lcom4_score"],
-                    "lcom5_score": analysis_result["lcom5_score"]
+                    "lcom5_score": analysis_result["lcom5_score"],
+                    "maintainability_index_score": analysis_result["maintainability_index_score"],
+                    "cyclomatic_complexity_score": analysis_result["cyclomatic_complexity_score"],
+                    "class_coupling_score": analysis_result["class_coupling_score"],
                 }
 
         # Define directory and file path
