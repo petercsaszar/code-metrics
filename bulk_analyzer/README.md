@@ -70,6 +70,26 @@ Create a `config.yml` file. An example configuration (`config.example.yml`) is p
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
 
+### Generate an HTML report
+You can also generate a standalone HTML report for the bulk analyzer outputs. The report includes summary cards, sortable tables, and a sunburst diagram that shows the hierarchy `source → project/ref → issue type → severity`.
+
+From the workspace root:
+
+```shell
+python -m bulk_analyzer.html_report_generator
+```
+
+By default the generator looks for:
+- `method_analysis_results*.json`
+- `analysis_results*.json`
+- `public_analysis_results.json`
+
+The default output file is `bulk_analysis_report.html`. You can override the inputs and output path:
+
+```shell
+python -m bulk_analyzer.html_report_generator --inputs method_analysis_results_1.json method_analysis_results_2.json --output reports/bulk-report.html
+```
+
 ### Docker Workflow (Linux & Windows)
 
 **Overview**
