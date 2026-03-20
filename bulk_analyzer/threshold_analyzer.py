@@ -13,7 +13,7 @@ GITLAB_URL = config["gitlab"]["url"]
 GROUP_ID = config["gitlab"]["group_id"] + ("%2f" + config["gitlab"]["subgroup_id"] if config["gitlab"]["subgroup_id"] else "")
 TOKEN = config["gitlab"]["token"]  # GitLab API token with read_repository permission
 ANALYZER_DIR = config["analyzer"]["project_dir"]
-THRESHOLDS = list(range(1,10))
+THRESHOLDS = list(range(1,20))
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
 
@@ -46,7 +46,7 @@ def update_config(new_threshold):
     conf["LCOM4Analysis"]["CohesionThreshold"] = new_threshold
     conf["MaintainabilityIndexAnalysis"]["MinimumMaintainabilityIndex"] = new_threshold * 10
     conf["CyclomaticComplexityAnalysis"]["MaximumComplexity"] = new_threshold
-    conf["ClassCouplingAnalysis"]["MaximumClassCoupling"] = new_threshold
+    conf["ClassCouplingAnalysis"]["MaximumClassCoupling"] = 10 + new_threshold
 
     with open(config_path, "w", encoding="utf8") as f:
         json.dump(conf, f, indent=4)

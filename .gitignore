@@ -580,3 +580,6 @@ config.yml
 repos/
 analysis_results_*.json
 commit_data.json
+method_analysis_results_*.json
+method_analysis_results.json
+xml_outputs/

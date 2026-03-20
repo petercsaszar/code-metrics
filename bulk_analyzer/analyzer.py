@@ -5,8 +5,12 @@ import subprocess
 import git
 import yaml
 import requests
-from .milestone_commit_finder import get_milestone_commits
-from .dotnet_environment import ensure_dotnet_environment
+try:
+    from .milestone_commit_finder import get_milestone_commits
+    from .dotnet_environment import ensure_dotnet_environment
+except ImportError:
+    from milestone_commit_finder import get_milestone_commits
+    from dotnet_environment import ensure_dotnet_environment
 import logging
 
 # Configure logging
@@ -138,6 +142,8 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
             analyze_command = [
                 "dotnet", "run", "--project", project_path, "analyze", solution_path
             ]
+    if MSBUILD_DIR and os.path.isdir(MSBUILD_DIR):
+        analyze_command += ["--msbuild-path", MSBUILD_DIR]
 
     logging.info("Executing analyzer command: %s", " ".join(analyze_command))
     result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
@@ -289,17 +295,30 @@ def generate_unity_solution(repo_path):
         print(f"❌ Error generating Unity solution: {e}")
 
 def update_unity_project_version(project_path):
-    """Update the Unity Editor version"""
     version_file = os.path.join(project_path, "ProjectSettings", "ProjectVersion.txt")
 
     if not os.path.isfile(version_file):
         print(f"[ERROR] Couldn't find ProjectVersion.txt at: {version_file}")
         return
 
-    with open(version_file, "w") as f:
-        f.write(f"m_EditorVersion: {UNITY_VERSION}\n")
+    lines = []
+    found = False
 
-    print(f"[OK] Updated Unity version to {UNITY_VERSION} in {version_file}")
+    with open(version_file, "r") as f:
+        for line in f:
+            if line.startswith("m_EditorVersion:"):
+                lines.append(f"m_EditorVersion: {UNITY_VERSION}\n")
+                found = True
+            else:
+                lines.append(line)
+
+    if not found:
+        lines.append(f"m_EditorVersion: {UNITY_VERSION}\n")
+
+    with open(version_file, "w") as f:
+        f.writelines(lines)
+
+    print(f"[OK] Updated Unity version to {UNITY_VERSION}")
 
 
 if __name__ == "__main__":
