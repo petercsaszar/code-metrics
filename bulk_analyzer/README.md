@@ -125,6 +125,14 @@ pip install -r bulk_analyzer/requirements.txt
 python bulk_analyzer/public_project_analyzer.py
 ```
 
+- Orchestrated method-level diagnostics (container emits parsed per-method diagnostics):
+
+```bash
+PUBLIC_ANALYSIS_MODE=method \
+PUBLIC_OUTPUT_FILE=public_method_analysis_results.json \
+python bulk_analyzer/public_project_analyzer.py
+```
+
 **Windows Containers**
 - Switch Docker Desktop to Windows containers mode (tray icon → Switch to Windows containers).
 - Build Windows image:
@@ -153,6 +161,16 @@ $env:DOCKER_IMAGE = 'code-metrics-analyzer:windows'
 python bulk_analyzer/public_project_analyzer.py
 ```
 
+- Orchestrated method-level diagnostics:
+
+```powershell
+$env:CONTAINER_OS = 'windows'
+$env:DOCKER_IMAGE = 'code-metrics-analyzer:windows'
+$env:PUBLIC_ANALYSIS_MODE = 'method'
+$env:PUBLIC_OUTPUT_FILE = 'public_method_analysis_results.json'
+python bulk_analyzer/public_project_analyzer.py
+```
+
 **Cross-Platform Tag (optional)**
 - Publish separate images for Linux and Windows, then create a manifest so one tag resolves automatically:
 
@@ -171,6 +189,8 @@ The analyzer and the container orchestration use several environment variables a
 - **ANALYZER_CONFIG / CONFIG_PATH**: Path to the YAML configuration file used by the analyzer. When running inside the official image these are set to `/opt/bulk_analyzer/config.yml` (see `docker/Dockerfile`). If not set, the code falls back to `config.yml` in the current working directory.
 - **DOCKER_IMAGE**: Override the Docker image name used by `public_project_analyzer.py` when spawning containers. Default: value from the config `docker.image` or `code-metrics-analyzer`.
 - **CONTAINER_OS**: Explicitly select container OS branch (`windows` or `linux`). Default: value from config `docker.os` or `linux` if not set. Set to `windows` when using the Windows image and Windows containers mode.
+- **PUBLIC_ANALYSIS_MODE**: Select output mode for `public_project_analyzer.py`. Supported values: `summary` (default) and `method` (returns parsed per-method diagnostics from XML).
+- **PUBLIC_OUTPUT_FILE**: Override output file name written by `public_project_analyzer.py`. Default: value from config `public_analyzer.output_file` or `public_analysis_results.json`.
 - **MSBUILD_PATH**: Path or command to the MSBuild/dotnet binary to use (e.g. `dotnet`). Default: `dotnet`.
 - **ANALYSIS_LOGFILE**: Path where container run failures and error details are appended. Default: `analysis_errors.log` in the workspace root unless overridden.
 - **DUMP_CONTAINER_OUTPUT**: When set to `1`, `true`, or `True` the orchestrator will append full container STDOUT/STDERR to `ANALYSIS_LOGFILE` even on successful runs (useful for debugging noisy containers).

@@ -15,6 +15,8 @@ public_analyzer:
   repository_list: "repos.json"      # List of , public repos to analyze
   clone_dir: "./public_repos"              # Directory where repositories will be cloned
   concurrency: 6                   # Number of parallel container runs
+  analysis_mode: "summary"         # summary | method
+  output_file: "public_analysis_results.json"
 
 analyzer:
   solution_dir: "../CodeMetricsAnalyzer"  # Base directory of your .NET solution

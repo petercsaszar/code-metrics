@@ -29,6 +29,10 @@ REPO_LIST_FILE = config["public_analyzer"]["repository_list"]  # File containing
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 CLONE_DIR = config["public_analyzer"]["clone_dir"]
 DOCKER_IMAGE = os.getenv("DOCKER_IMAGE", config.get("docker", {}).get("image", "code-metrics-analyzer"))
+ANALYSIS_MODE = os.getenv("PUBLIC_ANALYSIS_MODE", config.get("public_analyzer", {}).get("analysis_mode", "summary")).lower()
+if ANALYSIS_MODE not in ("summary", "method"):
+    ANALYSIS_MODE = "summary"
+OUTPUT_FILE = os.getenv("PUBLIC_OUTPUT_FILE", config.get("public_analyzer", {}).get("output_file", "public_analysis_results.json"))
 # Container OS selection: prefer explicit env or config, default to linux
 # Set `CONTAINER_OS` env or `docker.os` in config.yml to "windows" or "linux".
 CONTAINER_OS = os.getenv("CONTAINER_OS", config.get("docker", {}).get("os", "linux"))
@@ -266,7 +270,7 @@ def _to_container_path(host_path):
     return os.path.join("/workspace", rel.replace("\\", "/")).replace("\\", "/")
 
 
-def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_build_command=None, timeout=None):
+def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_build_command=None, timeout=None, analysis_mode="summary"):
     """
     Clone the given `repo_url` inside a fresh temp dir mounted to the container at /work,
     checkout `ref` (tag/commit/branch) if provided, then run `bulk_analyzer.container_runner`
@@ -291,6 +295,7 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
         clone_and_run += (
             f"& C:\\opt\\venv\\Scripts\\python.exe -m bulk_analyzer.container_runner "
             f"--repo-path '{in_container_repo_path}' "
+            f"--analysis-mode {analysis_mode} "
         )
     else:
         clone_and_run = (
@@ -302,6 +307,7 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
         clone_and_run += (
             f"/opt/venv/bin/python -m bulk_analyzer.container_runner "
             f"--repo-path {in_container_repo_path} "
+            f"--analysis-mode {analysis_mode} "
         )
     if solution_path:
         clone_and_run += f"--solution-path {solution_path} "
@@ -413,7 +419,13 @@ def analyze_projects():
     def _run_task(task):
         project_id, repo_url, i, tag_name, solution_path, custom_build_command = task
         try:
-            container_result = run_analysis_in_container(repo_url, ref=tag_name, solution_path=solution_path, custom_build_command=custom_build_command)
+            container_result = run_analysis_in_container(
+                repo_url,
+                ref=tag_name,
+                solution_path=solution_path,
+                custom_build_command=custom_build_command,
+                analysis_mode=ANALYSIS_MODE,
+            )
             return (project_id, repo_url, i, tag_name, container_result, None)
         except Exception as e:
             return (project_id, repo_url, i, tag_name, None, e)
@@ -426,25 +438,36 @@ def analyze_projects():
                 print(f"⚠️ Error analyzing tag {tag_name} in {project_id}: {err}")
                 continue
 
-            analysis_result = container_result.get("custom", {}) if container_result else {}
+            if ANALYSIS_MODE == "method":
+                method_results = container_result.get("method", []) if container_result else []
+                if method_results:
+                    with lock:
+                        results.setdefault(project_id, {})
+                        results[project_id][i] = {
+                            "repo_url": repo_url,
+                            "tag": tag_name,
+                            "diagnostics": method_results,
+                        }
+            else:
+                analysis_result = container_result.get("custom", {}) if container_result else {}
 
-            if analysis_result:
-                with lock:
-                    results.setdefault(project_id, {})
-                    results[project_id][i] = {
-                        "repo_url": repo_url,
-                        "tag": tag_name,
-                        "bumpy_score": analysis_result.get("bumpy_score", 0),
-                        "fpc_score": analysis_result.get("fpc_score", 0),
-                        "lcom5_score": analysis_result.get("lcom5_score", 0),
-                        "lcom4_score": analysis_result.get("lcom4_score", 0),
-                        "maintainability_index_score": analysis_result.get("maintainability_index_score", 0),
-                        "cyclomatic_complexity_score": analysis_result.get("cyclomatic_complexity_score", 0),
-                        "class_coupling_score": analysis_result.get("class_coupling_score", 0),
-                    }
+                if analysis_result:
+                    with lock:
+                        results.setdefault(project_id, {})
+                        results[project_id][i] = {
+                            "repo_url": repo_url,
+                            "tag": tag_name,
+                            "bumpy_score": analysis_result.get("bumpy_score", 0),
+                            "fpc_score": analysis_result.get("fpc_score", 0),
+                            "lcom5_score": analysis_result.get("lcom5_score", 0),
+                            "lcom4_score": analysis_result.get("lcom4_score", 0),
+                            "maintainability_index_score": analysis_result.get("maintainability_index_score", 0),
+                            "cyclomatic_complexity_score": analysis_result.get("cyclomatic_complexity_score", 0),
+                            "class_coupling_score": analysis_result.get("class_coupling_score", 0),
+                        }
 
     # Save results
-    with open("public_analysis_results.json", "w", encoding="utf-8") as f:
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=4)
 
 if __name__ == "__main__":
