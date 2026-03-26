@@ -39,7 +39,9 @@ namespace CodeMetricsAnalyzer.Analyzers
                 methodBodyOperation?.ExpressionBody ??
                 (methodDeclaration.Body != null
                     ? semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken)
-                    : null);
+                    : methodDeclaration.ExpressionBody != null
+                        ? semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken)
+                        : null);
 
             if (rootOperation is null)
                 return;

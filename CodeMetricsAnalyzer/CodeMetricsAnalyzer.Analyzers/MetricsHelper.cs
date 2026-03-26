@@ -14,6 +14,8 @@ namespace CodeMetricsAnalyzer.Analyzers
             switch (operation.Kind)
             {
                 case OperationKind.CaseClause:
+                case OperationKind.SwitchExpressionArm:
+                case OperationKind.CatchClause:
                 case OperationKind.Coalesce:
                 case OperationKind.Conditional:
                 case OperationKind.ConditionalAccess:
@@ -21,12 +23,9 @@ namespace CodeMetricsAnalyzer.Analyzers
                     return true;
 
                 case OperationKind.BinaryOperator:
-                    var binaryOperation = (IBinaryOperation)operation;
-                    return binaryOperation.OperatorKind == BinaryOperatorKind.ConditionalAnd ||
-                           binaryOperation.OperatorKind == BinaryOperatorKind.ConditionalOr ||
-                           (binaryOperation.Type?.SpecialType == SpecialType.System_Boolean &&
-                            (binaryOperation.OperatorKind == BinaryOperatorKind.Or ||
-                             binaryOperation.OperatorKind == BinaryOperatorKind.And));
+                    var binaryOp = (IBinaryOperation)operation;
+                    return binaryOp.OperatorKind == BinaryOperatorKind.ConditionalAnd ||
+                           binaryOp.OperatorKind == BinaryOperatorKind.ConditionalOr;
 
                 default:
                     return false;
@@ -173,10 +172,17 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         public static int CalculateLinesOfCode(MethodDeclarationSyntax method)
         {
-            SyntaxNode syntaxToMeasure = (SyntaxNode)method.Body ?? (SyntaxNode)method.ExpressionBody ?? method;
-            var lineSpan = syntaxToMeasure.SyntaxTree.GetLineSpan(syntaxToMeasure.Span);
+            if (method.Body != null)
+            {
+                var lineSpan = method.Body.SyntaxTree.GetLineSpan(method.Body.Span);
+                return Math.Max(1, lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1);
+            }
 
-            return Math.Max(1, lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1);
+            if (method.ExpressionBody != null)
+            {          
+                return 1;
+            }
+            return 0;
         }
     }
 }

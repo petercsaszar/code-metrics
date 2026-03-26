@@ -33,8 +33,10 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             // fallback
             IOperation rootOp = methodBodyOp?.BlockBody ?? methodBodyOp?.ExpressionBody;
-            if (rootOp is null && methodDeclaration.Body != null)
-                rootOp = model.GetOperation(methodDeclaration.Body, context.CancellationToken);
+            if (rootOp is null)
+                rootOp = methodDeclaration.Body != null
+                    ? model.GetOperation(methodDeclaration.Body, context.CancellationToken)
+                    : model.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken);
 
             if (rootOp is null)
                 return;

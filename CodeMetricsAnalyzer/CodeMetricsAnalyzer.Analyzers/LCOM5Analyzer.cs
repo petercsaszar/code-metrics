@@ -6,7 +6,6 @@ using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -19,14 +18,14 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
         }
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics 
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
             => ImmutableArray.Create(DiagnosticDescriptors.LCOM5Rule);
 
         protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
             var classDeclaration = (ClassDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
-            var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
+            var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration) as INamedTypeSymbol;
 
             if (classSymbol == null)
                 return;
@@ -37,10 +36,16 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
 
-            if (methods.Count < _config.LCOM5Analysis.MinimumMethodCount || fields.Count < _config.LCOM5Analysis.MinimumFieldCount)
+            int k = methods.Count;
+            int l = fields.Count;
+
+            if (k < _config.LCOM5Analysis.MinimumMethodCount || l < _config.LCOM5Analysis.MinimumFieldCount)
                 return;
 
-            Dictionary<IMethodSymbol, HashSet<IFieldSymbol>> methodAccesses = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
+            if (k == 1)
+                return;
+
+            var methodAccesses = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
 
             foreach (var method in methods)
             {
@@ -48,76 +53,54 @@ namespace CodeMetricsAnalyzer.Analyzers
 
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
-                    if (syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax)
+                    if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax))
+                        continue;
+
+                    if (syntax.Body != null)
                     {
-                        BlockSyntax body = syntax.Body; // Normal method body
-
-                        if (body == null && syntax.ExpressionBody != null)
-                        {
-                            // Handle expression-bodied methods (e.g. int Square(int x) => x * x)
-                            body = SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(syntax.ExpressionBody.Expression));
-                        }
-
-                        if (body != null)
-                        {
-                            try
-                            {
-                                // TODO: Figure out why this is throwing an exception
-                                var dataFlow = semanticModel.AnalyzeDataFlow(body);
-                                if (dataFlow != null)
-                                {
-                                    foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
-                                    {
-                                        if (symbol is IFieldSymbol fieldSymbol)
-                                        {
-                                            accessedFields.Add(fieldSymbol);
-                                        }
-                                    }
-                                }
-                            }
-                            catch (ArgumentException)
-                            {
-                                // Ignore exceptions for now, likely due to generated code
-                                //// Debugging prints
-                                //Console.WriteLine($"Method: {syntax.Identifier.Text}");
-                                //Console.WriteLine($"SyntaxTree: {syntax.SyntaxTree.FilePath}");
-                                //Console.WriteLine($"Body SyntaxTree: {body?.SyntaxTree?.FilePath}");
-                                //Console.WriteLine($"SemanticModel SyntaxTree: {semanticModel.SyntaxTree.FilePath}");
-                            }
-                        }
+                        var dataFlow = semanticModel.AnalyzeDataFlow(syntax.Body);
+                        if (dataFlow != null)
+                            CollectFieldAccesses(dataFlow, accessedFields);
+                    }
+                    else if (syntax.ExpressionBody != null)
+                    {
+                        var dataFlow = semanticModel.AnalyzeDataFlow(
+                            syntax.ExpressionBody.Expression,
+                            syntax.ExpressionBody.Expression);
+                        if (dataFlow != null)
+                            CollectFieldAccesses(dataFlow, accessedFields);
                     }
                 }
 
                 methodAccesses[method] = accessedFields;
             }
 
-            int k = methods.Count;
-            int l = fields.Count;
-            double a = 0;
+            double a = methodAccesses.Values.Sum(accessedFields => accessedFields.Count);
 
-            if (methodAccesses.Count > 0)
-            {
-                var commonFields = new HashSet<IFieldSymbol>(methodAccesses.Values.First(), SymbolEqualityComparer.Default);
+            // LCOM5 = (a - k*l) / (l - k*l)   [Henderson-Sellers 1996]
+            double denominator = l - ((double)k * l);
 
-                foreach (var fieldsSet in methodAccesses.Values.Skip(1))
-                {
-                    commonFields.IntersectWith(fieldsSet);
-                }
+            double lcom5 = (a - ((double)k * l)) / denominator;
 
-                a = commonFields.Count;
-            }
-
-            double LCOM5 = 1 - (a / l);
-
-            //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
-
-            if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold)
+            if (lcom5 > _config.LCOM5Analysis.CohesionThreshold)
             {
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.LCOM5Rule,
                     classDeclaration.Identifier.GetLocation(),
-                    classSymbol.Name, LCOM5);
+                    classSymbol.Name,
+                    lcom5);
+            }
+        }
+
+        private static void CollectFieldAccesses(
+            Microsoft.CodeAnalysis.DataFlowAnalysis dataFlow,
+            HashSet<IFieldSymbol> accessedFields)
+        {
+            foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
+            {
+                if (symbol is IFieldSymbol fieldSymbol)
+                    accessedFields.Add(fieldSymbol);
             }
         }
     }

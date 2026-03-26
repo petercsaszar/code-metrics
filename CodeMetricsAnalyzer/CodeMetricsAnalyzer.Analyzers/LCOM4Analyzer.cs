@@ -5,7 +5,6 @@ using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -25,9 +24,11 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
             var classDecl = (ClassDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
-            var classSymbol = semanticModel.GetDeclaredSymbol(classDecl);
 
-            if (classSymbol == null) return;
+
+            var classSymbol = semanticModel.GetDeclaredSymbol(classDecl) as INamedTypeSymbol;
+            if (classSymbol == null)
+                return;
 
             var methods = classSymbol.GetMembers().OfType<IMethodSymbol>()
                 .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic)
@@ -48,30 +49,36 @@ namespace CodeMetricsAnalyzer.Analyzers
 
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
-                    var methodNode = syntaxRef.GetSyntax() as MethodDeclarationSyntax;
-                    if (methodNode?.Body == null && methodNode?.ExpressionBody == null) continue;
-
-                    var body = methodNode.Body ??
-                               SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(methodNode.ExpressionBody.Expression));
-
-                    SyntaxNode analysisTarget = methodNode.Body ?? (SyntaxNode)methodNode.ExpressionBody?.Expression;
-
-                    if (analysisTarget == null || !semanticModel.SyntaxTree.Equals(analysisTarget.SyntaxTree))
+                    if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax methodNode))
                         continue;
 
-                    var dataFlow = semanticModel.AnalyzeDataFlow(analysisTarget);
+                    if (methodNode.Body == null && methodNode.ExpressionBody == null)
+                        continue;
 
-                    foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
+                    if (methodNode.Body != null)
                     {
-                        if (symbol is IFieldSymbol fieldSymbol)
-                            accessedFields.Add(fieldSymbol);
+                        var dataFlow = semanticModel.AnalyzeDataFlow(methodNode.Body);
+                        if (dataFlow != null)
+                            CollectFieldAccesses(dataFlow, accessedFields);
+                    }
+                    else if (methodNode.ExpressionBody != null)
+                    {
+                        var dataFlow = semanticModel.AnalyzeDataFlow(
+                            methodNode.ExpressionBody.Expression,
+                            methodNode.ExpressionBody.Expression);
+                        if (dataFlow != null)
+                            CollectFieldAccesses(dataFlow, accessedFields);
                     }
 
                     var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
                     foreach (var invocation in invocations)
                     {
                         var called = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-                        if (called != null && methods.Contains(called) && !SymbolEqualityComparer.Default.Equals(called, method))
+
+
+                        if (called != null
+                            && methods.Any(m => SymbolEqualityComparer.Default.Equals(m, called))
+                            && !SymbolEqualityComparer.Default.Equals(called, method))
                         {
                             connected.Add(called);
                         }
@@ -82,40 +89,39 @@ namespace CodeMetricsAnalyzer.Analyzers
                 methodGraph[method] = connected;
             }
 
-            // Add connections via shared field access
-            foreach (var m1 in methods)
+            for (int i = 0; i < methods.Count; i++)
             {
-                foreach (var m2 in methods)
+                for (int j = i + 1; j < methods.Count; j++)
                 {
-                    if (SymbolEqualityComparer.Default.Equals(m1, m2)) continue;
-
-                    if (fieldAccessMap[m1].Overlaps(fieldAccessMap[m2]))
+                    if (fieldAccessMap[methods[i]].Overlaps(fieldAccessMap[methods[j]]))
                     {
-                        methodGraph[m1].Add(m2);
-                        methodGraph[m2].Add(m1);
+                        methodGraph[methods[i]].Add(methods[j]);
+                        methodGraph[methods[j]].Add(methods[i]);
                     }
                 }
             }
 
-            // Count connected components
             var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
             int components = 0;
 
-            void DFS(IMethodSymbol node)
-            {
-                if (!visited.Add(node)) return;
-                foreach (var neighbor in methodGraph[node])
-                {
-                    DFS(neighbor);
-                }
-            }
-
             foreach (var method in methods)
             {
-                if (!visited.Contains(method))
+                if (visited.Contains(method))
+                    continue;
+
+                components++;
+
+                var stack = new Stack<IMethodSymbol>();
+                stack.Push(method);
+
+                while (stack.Count > 0)
                 {
-                    components++;
-                    DFS(method);
+                    var node = stack.Pop();
+                    if (!visited.Add(node))
+                        continue;
+
+                    foreach (var neighbor in methodGraph[node])
+                        stack.Push(neighbor);
                 }
             }
 
@@ -127,6 +133,17 @@ namespace CodeMetricsAnalyzer.Analyzers
                     classDecl.Identifier.GetLocation(),
                     classSymbol.Name,
                     components);
+            }
+        }
+
+        private static void CollectFieldAccesses(
+            Microsoft.CodeAnalysis.DataFlowAnalysis dataFlow,
+            HashSet<IFieldSymbol> accessedFields)
+        {
+            foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
+            {
+                if (symbol is IFieldSymbol fieldSymbol)
+                    accessedFields.Add(fieldSymbol);
             }
         }
     }

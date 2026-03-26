@@ -1,10 +1,11 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
+using CodeMetricsAnalyzer.Analyzers.Configurations;
+using CodeMetricsAnalyzer.Analyzers.Diagnostics;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Collections.Immutable;
-using CodeMetricsAnalyzer.Analyzers.Configurations;
-using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
-using CodeMetricsAnalyzer.Analyzers.Diagnostics;
+using System.Linq;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
@@ -22,7 +23,8 @@ namespace CodeMetricsAnalyzer.Analyzers
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
             var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-            int parameterCount = methodDeclaration.ParameterList.Parameters.Count;
+            int parameterCount = methodDeclaration.ParameterList.Parameters
+                .Count(p => !p.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ThisKeyword)));
 
             if (parameterCount > _config.FunctionParameterCountAnalysis.ParameterCountThreshold)
             {
