@@ -2,6 +2,7 @@ import os
 import re
 import json
 import subprocess
+import shutil
 import git
 import yaml
 import requests
@@ -54,8 +55,108 @@ MSBUILD_DIR = config["analyzer"]["msbuild_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
 UNITY_PATH = config["analyzer"]["unity_path"]
 UNITY_VERSION = config["analyzer"]["unity_version"]
+CLOC_BINARY = config["analyzer"].get("cloc_path", "cloc")
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
+
+
+def _calculate_lines_of_code_fallback(repo_path, extensions=(".cs",), exclude_dirs=None):
+    """Fallback LOC calculation: count non-empty lines in matching source files."""
+    if exclude_dirs is None:
+        exclude_dirs = {
+            ".git",
+            ".vs",
+            "bin",
+            "obj",
+            "Library",
+            "Packages",
+            "Temp",
+            "Logs",
+            "UserSettings",
+            "node_modules",
+        }
+
+    loc = 0
+    for root, dirs, files in os.walk(repo_path):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+        for file in files:
+            if not file.endswith(extensions):
+                continue
+
+            file_path = os.path.join(root, file)
+            try:
+                with open(file_path, "r", encoding="utf-8", errors="ignore") as source_file:    
+                    for line in source_file:
+                        if line.strip():
+                            loc += 1
+            except OSError as e:
+                logging.warning("Could not read file for LOC count: %s (%s)", file_path, e)
+
+    return loc
+
+
+def calculate_lines_of_code(repo_path, extensions=(".cs",), exclude_dirs=None):
+    """Calculate LOC using cloc when available; otherwise use fallback counting."""
+    if exclude_dirs is None:
+        exclude_dirs = {
+            ".git",
+            ".vs",
+            "bin",
+            "obj",
+            "Library",
+            "Packages",
+            "Temp",
+            "Logs",
+            "UserSettings",
+            "node_modules",
+        }
+
+    cloc_binary = os.getenv("CLOC_PATH", CLOC_BINARY)
+    cloc_available = shutil.which(cloc_binary) is not None
+
+    if cloc_available:
+        include_lang = "C#" if ".cs" in extensions else None
+        exclude_dir_arg = ",".join(sorted(exclude_dirs))
+
+        cloc_command = [
+            cloc_binary,
+            "--json",
+            "--quiet",
+            "--exclude-dir",
+            exclude_dir_arg,
+        ]
+
+        if include_lang:
+            cloc_command += ["--include-lang", include_lang]
+
+        cloc_command.append(repo_path)
+
+        try:
+            result = subprocess.run(
+                cloc_command,
+                capture_output=True,
+                text=True,
+                check=False,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            if result.returncode == 0 and result.stdout:
+                cloc_output = json.loads(result.stdout)
+                if "SUM" in cloc_output and "code" in cloc_output["SUM"]:
+                    return int(cloc_output["SUM"]["code"])
+
+            logging.warning(
+                "cloc failed for %s (exit=%s), falling back to internal LOC count. stderr=%s",
+                repo_path,
+                result.returncode,
+                result.stderr.strip(),
+            )
+        except Exception as e:
+            logging.warning("cloc execution failed for %s, fallback LOC will be used: %s", repo_path, e)
+
+    return _calculate_lines_of_code_fallback(repo_path, extensions=extensions, exclude_dirs=exclude_dirs)
 
 def get_project_info(project_id):
     """Fetch project information from GitLab to get the correct HTTP URL."""
@@ -228,6 +329,7 @@ def analyze_milestone(milestone_keywords = None):
             analysis_result = run_analyzers(repo_path)
 
             if analysis_result:
+                lines_of_code = calculate_lines_of_code(repo_path)
                 results[project_id] = {
                     "project_id": project_id,
                     "commit_id": commit_id,
@@ -238,7 +340,9 @@ def analyze_milestone(milestone_keywords = None):
                     "maintainability_index_score": analysis_result["maintainability_index_score"],
                     "cyclomatic_complexity_score": analysis_result["cyclomatic_complexity_score"],
                     "class_coupling_score": analysis_result["class_coupling_score"],
+                    "lines_of_code": lines_of_code,
                 }
+                logging.info("LOC calculated for project %s at %s: %s", project_id, commit_id, lines_of_code)
         except Exception as e:
             print(f"❌ Error analyzing project {project_id}: {e}")
 

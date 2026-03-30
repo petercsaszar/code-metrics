@@ -295,14 +295,27 @@ def parse_xml_output(xml_path: str) -> list[dict]:
 def accumulate_xml_files(xml_dir: str | None = None) -> dict:
     """
     Walk *xml_dir* (default: ``XML_OUTPUT_DIR``) and parse every ``*.xml``
-    file produced by the analyzer.
+    file produced by the analyzer. Apply threshold filtering and compute
+    method/class counts.
 
     Returns a nested dict::
 
         {
             "<xml_filename_stem>": {
                 "xml_path":    "...",
-                "diagnostics": [ <record>, ... ]
+                "all_diagnostics_count": <count>,
+                "filtered_diagnostics_count": <count>,
+                "summary": {
+                    "all": {
+                        "method_count": <count>,
+                        "class_count": <count>,
+                    },
+                    "filtered": {
+                        "method_count": <count>,
+                        "class_count": <count>,
+                    }
+                },
+                "diagnostics": [ <filtered_record>, ... ]
             },
             ...
         }
@@ -325,15 +338,144 @@ def accumulate_xml_files(xml_dir: str | None = None) -> dict:
 
     for xml_path in sorted(xml_files):
         stem = os.path.splitext(os.path.basename(xml_path))[0]
-        records = parse_xml_output(xml_path)
+        
+        # Get ALL diagnostics (no filtering yet)
+        all_records = parse_xml_output(xml_path)
+        
+        # Count total methods and classes
+        total_methods, total_classes = _count_methods_and_classes(all_records)
+        
+        # Filter diagnostics by threshold
+        filtered_records = [d for d in all_records if _passes_threshold(d)]
+        
+        # Count filtered methods and classes
+        filtered_methods, filtered_classes = _count_methods_and_classes(filtered_records)
+        
         accumulated[stem] = {
             "xml_path": xml_path,
-            "diagnostics": records,
+            "all_diagnostics_count": len(all_records),
+            "filtered_diagnostics_count": len(filtered_records),
+            "summary": {
+                "all": {
+                    "method_count": total_methods,
+                    "class_count": total_classes,
+                },
+                "filtered": {
+                    "method_count": filtered_methods,
+                    "class_count": filtered_classes,
+                }
+            },
+            "diagnostics": filtered_records,
         }
-        logger.info("  %s → %d diagnostics", stem, len(records))
+        logger.info("  %s → %d all / %d filtered diagnostics", stem, len(all_records), len(filtered_records))
 
     return accumulated
 
+
+# ---------------------------------------------------------------------------
+# Thresholds Configuration
+# ---------------------------------------------------------------------------
+THRESHOLDS = {
+    "BumpyRoadAnalysis": {
+        "BumpynessThreshold": 5
+    },
+    "FunctionParameterCountAnalysis": {
+        "ParameterCountThreshold": 4
+    },
+    "LCOM5Analysis": {
+        "CohesionThreshold": 0.3,
+        "MinimumMethodCount": 2,
+        "MinimumFieldCount": 1
+    },
+    "LCOM4Analysis": {
+        "CohesionThreshold": 7,
+        "MinimumMethodCount": 2,
+        "MinimumFieldCount": 1
+    },
+    "MaintainabilityIndexAnalysis": {
+        "MinimumMaintainabilityIndex": 65
+    },
+    "CyclomaticComplexityAnalysis": {
+        "MaximumComplexity": 5
+    },
+    "ClassCouplingAnalysis": {
+        "MaximumClassCoupling": 21
+    }
+}
+
+def _passes_threshold(diagnostic: dict) -> bool:
+    """
+    Check if a diagnostic passes the configured thresholds.
+    Returns True if the diagnostic should be included (i.e., it violates the threshold).
+    """
+    metric_name = diagnostic.get("metric_name")
+    metric_value = diagnostic.get("metric_value")
+    diagnostic_id = diagnostic.get("diagnostic_id")
+    
+    if metric_value is None or metric_name is None:
+        # If we can't parse the metric, include it by default
+        return True
+    
+    # CMA0001 - Bumpy Road Analysis
+    if diagnostic_id == "CMA0001" or metric_name == "bumpy_road_score":
+        threshold = THRESHOLDS["BumpyRoadAnalysis"]["BumpynessThreshold"]
+        return metric_value >= threshold
+    
+    # CMA0002 - Function Parameter Count Analysis
+    if diagnostic_id == "CMA0002" or metric_name == "parameter_count":
+        threshold = THRESHOLDS["FunctionParameterCountAnalysis"]["ParameterCountThreshold"]
+        return metric_value > threshold
+    
+    # CMA0005 - Maintainability Index Analysis
+    if diagnostic_id == "CMA0005" or metric_name == "maintainability_index":
+        threshold = THRESHOLDS["MaintainabilityIndexAnalysis"]["MinimumMaintainabilityIndex"]
+        return metric_value < threshold
+    
+    # CMA0006 - Cyclomatic Complexity Analysis
+    if diagnostic_id == "CMA0006" or metric_name == "cyclomatic_complexity":
+        threshold = THRESHOLDS["CyclomaticComplexityAnalysis"]["MaximumComplexity"]
+        return metric_value > threshold
+    
+    # CMA0003 - LCOM4 Analysis
+    if diagnostic_id == "CMA0003" or metric_name == "lcom4_score":
+        threshold = THRESHOLDS["LCOM4Analysis"]["CohesionThreshold"]
+        return metric_value > threshold
+    
+    # CMA0004 - LCOM5 Analysis
+    if diagnostic_id == "CMA0004" or metric_name == "lcom5_score":
+        threshold = THRESHOLDS["LCOM5Analysis"]["CohesionThreshold"]
+        return metric_value > threshold
+    
+    # CMA0007 - Class Coupling Analysis
+    if diagnostic_id == "CMA0007" or metric_name == "class_coupling":
+        threshold = THRESHOLDS["ClassCouplingAnalysis"]["MaximumClassCoupling"]
+        return metric_value > threshold
+    
+    # If we can't determine the threshold, include it
+    return True
+
+def _count_methods_and_classes(diagnostics: list) -> tuple[int, int]:
+    """
+    Count unique methods and classes from the diagnostic list.
+    Returns (method_count, class_count)
+    """
+    methods = set()
+    classes = set()
+    
+    for diagnostic in diagnostics:
+        symbol = diagnostic.get("symbol")
+        if not symbol:
+            continue
+        
+        diagnostic_id = diagnostic.get("diagnostic_id")
+        
+        # LCOM4 and LCOM5 are class-level diagnostics
+        if diagnostic_id in ("CMA0003", "CMA0004"):
+            classes.add(symbol)
+        else:
+            methods.add(symbol)
+    
+    return len(methods), len(classes)
 
 # ---------------------------------------------------------------------------
 # High-level milestone-based analysis
@@ -343,7 +485,7 @@ def analyze_milestone(milestone_keywords=None) -> dict:
     """
     Fetch milestone commits, run the analyzer with ``--output`` for each
     project/commit, and return the accumulated per-method results keyed by
-    project ID.
+    project ID with threshold filtering applied.
     """
     logger.info("Fetching commits for milestone: %s", milestone_keywords)
     commit_data = get_milestone_commits(milestone_keywords)
@@ -366,12 +508,35 @@ def analyze_milestone(milestone_keywords=None) -> dict:
             success = run_analyzers_with_output(repo_path, xml_path)
 
             if success:
-                diagnostics = parse_xml_output(xml_path)
+                # Get ALL diagnostics (no threshold filtering yet)
+                all_diagnostics = parse_xml_output(xml_path)
+                
+                # Count total methods and classes
+                total_methods, total_classes = _count_methods_and_classes(all_diagnostics)
+                
+                # Filter diagnostics by threshold
+                filtered_diagnostics = [d for d in all_diagnostics if _passes_threshold(d)]
+                
+                # Count filtered methods and classes
+                filtered_methods, filtered_classes = _count_methods_and_classes(filtered_diagnostics)
+                
                 results[project_id] = {
                     "project_id": project_id,
                     "commit_id": commit_id,
                     "xml_path": xml_path,
-                    "diagnostics": diagnostics,
+                    "all_diagnostics_count": len(all_diagnostics),
+                    "filtered_diagnostics_count": len(filtered_diagnostics),
+                    "summary": {
+                        "all": {
+                            "method_count": total_methods,
+                            "class_count": total_classes,
+                        },
+                        "filtered": {
+                            "method_count": filtered_methods,
+                            "class_count": filtered_classes,
+                        }
+                    },
+                    "diagnostics": filtered_diagnostics,
                 }
             else:
                 logger.warning("Analysis failed for project %s at commit %s", project_id, commit_id)
@@ -386,7 +551,7 @@ def analyze_all_milestones() -> None:
     """
     Iterate over all configured milestones, run analyzer with ``--output``
     for every project/commit, then accumulate all generated XML files into
-    a single ``method_analysis_results.json``.
+    a single ``method_analysis_results.json`` with threshold filtering applied.
     """
     for idx, milestone in enumerate(MILESTONES, start=1):
         logger.info("=== Milestone %d: %s ===", idx, milestone)
@@ -406,14 +571,16 @@ def analyze_all_milestones() -> None:
     with open(ACCUMULATED_OUTPUT, "w", encoding="utf-8") as fh:
         json.dump(accumulated, fh, indent=4, ensure_ascii=False)
 
-    total_diagnostics = sum(len(v["diagnostics"]) for v in accumulated.values())
+    total_all_diagnostics = sum(v["all_diagnostics_count"] for v in accumulated.values())
+    total_filtered_diagnostics = sum(v["filtered_diagnostics_count"] for v in accumulated.values())
     logger.info(
-        "Accumulated %d diagnostic(s) across %d XML file(s) → %s",
-        total_diagnostics,
+        "Accumulated %d diagnostic(s) (%d filtered) across %d XML file(s) → %s",
+        total_all_diagnostics,
+        total_filtered_diagnostics,
         len(accumulated),
         ACCUMULATED_OUTPUT,
     )
-    print(f"✅ Method-level analysis complete. {total_diagnostics} diagnostics accumulated → {ACCUMULATED_OUTPUT}")
+    print(f"✅ Method-level analysis complete. {total_all_diagnostics} total diagnostics ({total_filtered_diagnostics} filtered) accumulated → {ACCUMULATED_OUTPUT}")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ This tools written in Python finds milestones in students projects by searching 
 ## Usage
 ### Requirements
 Installed `python3` and `dotnet`, optionally `unity`.
+For more accurate LOC calculation, install `cloc` (https://github.com/AlDanial/cloc).
 
 ### Configuration
 Create a `config.yml` file. An example configuration (`config.example.yml`) is provided. The GitLab url (`url`), access token(`token`) and the id for the main group (found in the url when accessing the group from browser, `group_id`) need to be updated. Analysing a single group is possible by filling the `subgroup_id` with the subgroup name like above.
@@ -195,6 +196,7 @@ The analyzer and the container orchestration use several environment variables a
 - **ANALYSIS_LOGFILE**: Path where container run failures and error details are appended. Default: `analysis_errors.log` in the workspace root unless overridden.
 - **DUMP_CONTAINER_OUTPUT**: When set to `1`, `true`, or `True` the orchestrator will append full container STDOUT/STDERR to `ANALYSIS_LOGFILE` even on successful runs (useful for debugging noisy containers).
 - **LOG_LEVEL**: Logging verbosity for the Python code (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Default: `INFO`.
+- **CLOC_PATH**: Optional override for the `cloc` executable name/path used for LOC calculation. Default source is `analyzer.cloc_path` in `config.yml` (fallback `cloc`). If this environment variable is set, it overrides the config value. If `cloc` is unavailable, the analyzer falls back to internal non-empty line counting for `.cs` files.
 - **BUNDLED_ANALYZER_PATH**: Path where the published CodeMetricsAnalyzer DLL is expected inside the image (used as a fallback when the analyzer project is not mounted). Default: `/opt/CodeMetricsAnalyzer`.
 - **PYTHONPATH**: Not required by the analyzer itself but useful when bind-mounting your workspace into the image so Python can import the `bulk_analyzer` package (examples in this README use `--env PYTHONPATH=/workspace`).
 

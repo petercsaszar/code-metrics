@@ -390,8 +390,111 @@ def run_analysis_in_container(repo_url, ref=None, solution_path=None, custom_bui
             pass
         return {}
 
+# === Thresholds Configuration ===
+THRESHOLDS = {
+    "BumpyRoadAnalysis": {
+        "BumpynessThreshold": 5
+    },
+    "FunctionParameterCountAnalysis": {
+        "ParameterCountThreshold": 3
+    },
+    "LCOM5Analysis": {
+        "CohesionThreshold": 0.3,
+        "MinimumMethodCount": 2,
+        "MinimumFieldCount": 1
+    },
+    "LCOM4Analysis": {
+        "CohesionThreshold": 5,
+        "MinimumMethodCount": 2,
+        "MinimumFieldCount": 1
+    },
+    "MaintainabilityIndexAnalysis": {
+        "MinimumMaintainabilityIndex": 65
+    },
+    "CyclomaticComplexityAnalysis": {
+        "MaximumComplexity": 10
+    },
+    "ClassCouplingAnalysis": {
+        "MaximumClassCoupling": 9
+    }
+}
+
+def _passes_threshold(diagnostic: dict) -> bool:
+    """
+    Check if a diagnostic passes the configured thresholds.
+    Returns True if the diagnostic should be included (i.e., it violates the threshold).
+    """
+    metric_name = diagnostic.get("metric_name")
+    metric_value = diagnostic.get("metric_value")
+    diagnostic_id = diagnostic.get("diagnostic_id")
+    
+    if metric_value is None or metric_name is None:
+        # If we can't parse the metric, include it by default
+        return True
+    
+    # CMA0001 - Bumpy Road Analysis
+    if diagnostic_id == "CMA0001" or metric_name == "bumpy_road_score":
+        threshold = THRESHOLDS["BumpyRoadAnalysis"]["BumpynessThreshold"]
+        return metric_value >= threshold
+    
+    # CMA0002 - Function Parameter Count Analysis
+    if diagnostic_id == "CMA0002" or metric_name == "parameter_count":
+        threshold = THRESHOLDS["FunctionParameterCountAnalysis"]["ParameterCountThreshold"]
+        return metric_value > threshold
+    
+    # CMA0005 - Maintainability Index Analysis
+    if diagnostic_id == "CMA0005" or metric_name == "maintainability_index":
+        threshold = THRESHOLDS["MaintainabilityIndexAnalysis"]["MinimumMaintainabilityIndex"]
+        return metric_value < threshold
+    
+    # CMA0006 - Cyclomatic Complexity Analysis
+    if diagnostic_id == "CMA0006" or metric_name == "cyclomatic_complexity":
+        threshold = THRESHOLDS["CyclomaticComplexityAnalysis"]["MaximumComplexity"]
+        return metric_value > threshold
+    
+    # CMA0003 - LCOM4 Analysis
+    if diagnostic_id == "CMA0003" or metric_name == "lcom4_score":
+        threshold = THRESHOLDS["LCOM4Analysis"]["CohesionThreshold"]
+        return metric_value > threshold
+    
+    # CMA0004 - LCOM5 Analysis
+    if diagnostic_id == "CMA0004" or metric_name == "lcom5_score":
+        threshold = THRESHOLDS["LCOM5Analysis"]["CohesionThreshold"]
+        return metric_value > threshold
+    
+    # CMA0007 - Class Coupling Analysis
+    if diagnostic_id == "CMA0007" or metric_name == "class_coupling":
+        threshold = THRESHOLDS["ClassCouplingAnalysis"]["MaximumClassCoupling"]
+        return metric_value > threshold
+    
+    # If we can't determine the threshold, include it
+    return True
+
+def _count_methods_and_classes(diagnostics: list) -> tuple[int, int]:
+    """
+    Count unique methods and classes from the diagnostic list.
+    Returns (method_count, class_count)
+    """
+    methods = set()
+    classes = set()
+    
+    for diagnostic in diagnostics:
+        symbol = diagnostic.get("symbol")
+        if not symbol:
+            continue
+        
+        diagnostic_id = diagnostic.get("diagnostic_id")
+        
+        # LCOM4 and LCOM5 are class-level diagnostics
+        if diagnostic_id in ("CMA0003", "CMA0004"):
+            classes.add(symbol)
+        else:
+            methods.add(symbol)
+    
+    return len(methods), len(classes)
+
 def analyze_projects():
-    """Analyze all projects with different thresholds."""
+    """Analyze all projects with all methods/classes, then apply threshold filtering."""
     projects = load_commit_list()
 
     results = {}
@@ -439,14 +542,37 @@ def analyze_projects():
                 continue
 
             if ANALYSIS_MODE == "method":
-                method_results = container_result.get("method", []) if container_result else []
-                if method_results:
+                # Get ALL diagnostics (no filtering by threshold yet)
+                all_diagnostics = container_result.get("method", []) if container_result else []
+                
+                if all_diagnostics:
+                    # Count total methods and classes
+                    total_methods, total_classes = _count_methods_and_classes(all_diagnostics)
+                    
+                    # Filter diagnostics by threshold
+                    filtered_diagnostics = [d for d in all_diagnostics if _passes_threshold(d)]
+                    
+                    # Count filtered methods and classes
+                    filtered_methods, filtered_classes = _count_methods_and_classes(filtered_diagnostics)
+                    
                     with lock:
                         results.setdefault(project_id, {})
                         results[project_id][i] = {
                             "repo_url": repo_url,
                             "tag": tag_name,
-                            "diagnostics": method_results,
+                            "all_diagnostics_count": len(all_diagnostics),
+                            "filtered_diagnostics_count": len(filtered_diagnostics),
+                            "summary": {
+                                "all": {
+                                    "method_count": total_methods,
+                                    "class_count": total_classes,
+                                },
+                                "filtered": {
+                                    "method_count": filtered_methods,
+                                    "class_count": filtered_classes,
+                                }
+                            },
+                            "diagnostics": filtered_diagnostics,
                         }
             else:
                 analysis_result = container_result.get("custom", {}) if container_result else {}
