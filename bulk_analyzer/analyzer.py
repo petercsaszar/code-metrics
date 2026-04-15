@@ -264,6 +264,8 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
     match_cyclomatic_complexity = re.search(r"(\d+)\s+CMA0006", result.stdout)
     match_class_coupling = re.search(r"(\d+)\s+CMA0007", result.stdout)
 
+    lines_of_code = calculate_lines_of_code(repo_path)
+
     bumpy_score = int(match_bumpy.group(1)) if match_bumpy else 0
     fpc_score = int(match_fpc.group(1)) if match_fpc else 0
     lcom5_score = int(match_lcom5.group(1)) if match_lcom5 else 0
@@ -279,7 +281,8 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
         "lcom5_score": lcom5_score,
         "maintainability_index_score": maintainability_index_score,
         "cyclomatic_complexity_score": cyclomatic_complexity_score,
-        "class_coupling_score": class_coupling_score
+        "class_coupling_score": class_coupling_score,
+        "lines_of_code": lines_of_code,
     }
 
     return formatted_result

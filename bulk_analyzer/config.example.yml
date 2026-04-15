@@ -27,5 +27,14 @@ analyzer:
   unity_path: "" # optional, the Unity.exe path for creating .sln files for Unity projects
   unity_version: "6000.0.43f1"
 
+# Optional CodeChecker visualization export for method-level analysis.
+# This exports YOUR analyzer findings in CodeChecker-compatible formats.
+# It does not run CodeChecker analyzers.
+codechecker:
+  enabled: false
+  export_dir: "../codechecker_reports"     # where exported files are written
+  export_plist: true                        # export CodeChecker-compatible plist
+  export_json: true                         # export CodeChecker parse-compatible json
+
 docker:
   image: "code-metrics-analyzer"

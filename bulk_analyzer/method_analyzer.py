@@ -19,7 +19,7 @@ import os
 import re
 import json
 import subprocess
-import shutil
+import plistlib
 import xml.etree.ElementTree as ET
 import yaml
 import logging
@@ -74,6 +74,16 @@ ANALYZER_DIR = _config["analyzer"]["project_dir"]
 ANALYZER_PROJECT_FILE = _config["analyzer"]["project_file"]
 MSBUILD_DIR = _config["analyzer"].get("msbuild_dir", "")
 
+# Optional CodeChecker export for visualization (no CodeChecker analyzers run)
+_codechecker_cfg = _config.get("codechecker", {}) or {}
+CODECHECKER_EXPORT_ENABLED = bool(_codechecker_cfg.get("enabled", False))
+CODECHECKER_EXPORT_DIR = os.getenv(
+    "CODECHECKER_EXPORT_DIR",
+    _codechecker_cfg.get("export_dir", os.path.join(WORKSPACE, "codechecker_reports")),
+)
+CODECHECKER_EXPORT_PLIST = bool(_codechecker_cfg.get("export_plist", True))
+CODECHECKER_EXPORT_JSON = bool(_codechecker_cfg.get("export_json", True))
+
 # Directory where per-run XML output files are stored
 XML_OUTPUT_DIR = os.getenv("XML_OUTPUT_DIR", os.path.join(WORKSPACE, "xml_outputs"))
 
@@ -103,6 +113,190 @@ _METHOD_PATTERNS: list[tuple[str, re.Pattern]] = [
     # CMA0007 – ClassCoupling:     "'X' has a high class coupling value (12)"
     ("class_coupling",         re.compile(r"'([^']+)' has a high class coupling value \(([\d.]+)\)")),
 ]
+
+
+def _to_codechecker_severity(severity: str | None) -> str:
+    """Map generic severities to CodeChecker severities."""
+    sev = (severity or "").strip().lower()
+    if sev == "error":
+        return "HIGH"
+    if sev == "warning":
+        return "MEDIUM"
+    return "LOW"
+
+
+def _diagnostic_file_paths(repo_path: str, file_path: str) -> tuple[str, str]:
+    """Return (absolute_path, relative_path) for a diagnostic file path."""
+    candidate = (file_path or "").strip()
+
+    if not candidate:
+        return "", ""
+
+    if os.path.isabs(candidate):
+        abs_path = os.path.normpath(candidate)
+    else:
+        # Prefer repository-relative resolution first.
+        abs_path = os.path.normpath(os.path.join(repo_path, candidate))
+
+        # If that doesn't point to a file, try workspace-relative absolute path.
+        if not os.path.isfile(abs_path):
+            abs_from_cwd = os.path.normpath(os.path.abspath(candidate))
+            if os.path.isfile(abs_from_cwd):
+                abs_path = abs_from_cwd
+
+    if not os.path.isfile(abs_path):
+        return "", ""
+
+    try:
+        rel_path = os.path.relpath(abs_path, repo_path)
+    except ValueError:
+        rel_path = os.path.basename(abs_path)
+
+    return abs_path, rel_path.replace("\\", "/")
+
+
+def _extract_syntax_tree_path(message: str) -> str:
+    """Extract Roslyn SyntaxTree path from analyzer failure messages, if present."""
+    if not message:
+        return ""
+
+    match = re.search(r"(?:^|\n)SyntaxTree:\s*([^\r\n]+)", message)
+    if not match:
+        return ""
+
+    return match.group(1).strip()
+
+
+def export_diagnostics_to_codechecker(
+    diagnostics: list[dict],
+    repo_path: str,
+    project_id: str,
+    commit_id: str,
+) -> None:
+    """
+    Export own analyzer diagnostics to CodeChecker-compatible artifacts.
+
+    This exports findings only for visualization. It does NOT execute CodeChecker analyzers.
+    """
+    if not CODECHECKER_EXPORT_ENABLED:
+        return
+
+    if not diagnostics:
+        return
+
+    repo_path = os.path.abspath(repo_path)
+    output_dir = os.path.join(CODECHECKER_EXPORT_DIR, f"{project_id}_{commit_id[:8]}")
+    os.makedirs(output_dir, exist_ok=True)
+
+    file_indexes: dict[str, int] = {}
+    files: list[str] = []
+    plist_diagnostics: list[dict] = []
+    reports_json: list[dict] = []
+
+    skipped_without_file = 0
+
+    for diag in diagnostics:
+        checker_name = str(diag.get("diagnostic_id") or "CMA_UNKNOWN")
+        diag_title = str(diag.get("diagnostic_title") or checker_name)
+        message = str(diag.get("message") or diag_title)
+
+        line = int(diag.get("line") or 1)
+        if line < 1:
+            line = 1
+        col = int(diag.get("character") or 1)
+        if col < 1:
+            col = 1
+
+        file_path_raw = str(diag.get("file_path") or "")
+        abs_path, rel_path = _diagnostic_file_paths(repo_path, file_path_raw)
+
+        if not abs_path:
+            # Analyzer failure diagnostics often carry the file in the message body.
+            syntax_tree_path = _extract_syntax_tree_path(message)
+            if syntax_tree_path:
+                abs_path, rel_path = _diagnostic_file_paths(repo_path, syntax_tree_path)
+
+        if not abs_path:
+            skipped_without_file += 1
+            continue
+
+        if abs_path not in file_indexes:
+            file_indexes[abs_path] = len(files)
+            files.append(abs_path)
+        file_idx = file_indexes[abs_path]
+
+        plist_diagnostics.append(
+            {
+                "path": [
+                    {
+                        "kind": "event",
+                        "location": {"line": line, "col": col, "file": file_idx},
+                        "ranges": [],
+                        "depth": 0,
+                        "message": message,
+                    }
+                ],
+                "description": message,
+                "check_name": checker_name,
+                "category": "CodeMetricsAnalyzer",
+                "type": diag_title,
+                "location": {"line": line, "col": col, "file": file_idx},
+                "issue_context_kind": "function",
+                "issue_context": str(diag.get("symbol") or ""),
+            }
+        )
+
+        reports_json.append(
+            {
+                "file": {
+                    "id": abs_path,
+                    "path": rel_path,
+                    "original_path": abs_path,
+                },
+                "line": line,
+                "column": col,
+                "message": message,
+                "checker_name": checker_name,
+                "severity": _to_codechecker_severity(diag.get("severity")),
+                "analyzer_name": "custom-metrics",
+                "category": "CodeMetricsAnalyzer",
+                "type": diag_title,
+                "review_status": "unreviewed",
+                "source_code_comments": [],
+                "bug_path_events": [],
+                "bug_path_positions": [],
+                "notes": [],
+                "macro_expansions": [],
+            }
+        )
+
+    if CODECHECKER_EXPORT_PLIST:
+        plist_payload = {
+            "files": files,
+            "diagnostics": plist_diagnostics,
+        }
+        plist_path = os.path.join(output_dir, "custom_metrics.plist")
+        with open(plist_path, "wb") as handle:
+            plistlib.dump(plist_payload, handle, fmt=plistlib.FMT_XML)
+        logger.info("CodeChecker plist exported to %s", plist_path)
+
+    if CODECHECKER_EXPORT_JSON:
+        json_payload = {
+            "version": 1,
+            "reports": reports_json,
+        }
+        json_path = os.path.join(output_dir, "custom_metrics.json")
+        with open(json_path, "w", encoding="utf-8") as handle:
+            json.dump(json_payload, handle, indent=2, ensure_ascii=False)
+        logger.info("CodeChecker JSON exported to %s", json_path)
+
+    if skipped_without_file:
+        logger.warning(
+            "CodeChecker export skipped %d diagnostics without resolvable source files for %s_%s",
+            skipped_without_file,
+            project_id,
+            commit_id[:8],
+        )
 
 
 def _parse_metric_from_message(message: str) -> tuple[str | None, float | None]:
@@ -510,6 +704,14 @@ def analyze_milestone(milestone_keywords=None) -> dict:
             if success:
                 # Get ALL diagnostics (no threshold filtering yet)
                 all_diagnostics = parse_xml_output(xml_path)
+
+                # Export own analyzer findings for optional CodeChecker visualization.
+                export_diagnostics_to_codechecker(
+                    diagnostics=all_diagnostics,
+                    repo_path=repo_path,
+                    project_id=str(project_id),
+                    commit_id=commit_id,
+                )
                 
                 # Count total methods and classes
                 total_methods, total_classes = _count_methods_and_classes(all_diagnostics)

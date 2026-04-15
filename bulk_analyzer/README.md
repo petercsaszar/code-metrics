@@ -5,9 +5,14 @@ This tools written in Python finds milestones in students projects by searching 
 ### Requirements
 Installed `python3` and `dotnet`, optionally `unity`.
 For more accurate LOC calculation, install `cloc` (https://github.com/AlDanial/cloc).
+For optional CodeChecker visualization/export workflow, install `CodeChecker` (https://codechecker.readthedocs.io/) on the machine where you want to inspect/store the exported reports.
 
 ### Configuration
 Create a `config.yml` file. An example configuration (`config.example.yml`) is provided. The GitLab url (`url`), access token(`token`) and the id for the main group (found in the url when accessing the group from browser, `group_id`) need to be updated. Analysing a single group is possible by filling the `subgroup_id` with the subgroup name like above.
+
+To analyze Unity projects the `analyzer.unity_path` and the `analyzer.unity_version` should be set.
+
+For more accurate LOC calculation you should configure the `cloc` executable in `config.yml` under `analyzer.cloc_path` (default: `cloc`). If you need to install `cloc`, get it from https://github.com/AlDanial/cloc.
 
 ### Usage (on Windows)
 1. Open `Developer Powershell for VS 2022` from this folder.
@@ -71,7 +76,7 @@ Create a `config.yml` file. An example configuration (`config.example.yml`) is p
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
 
-### Generate an HTML report
+### Generate a HTML report (work in progress)
 You can also generate a standalone HTML report for the bulk analyzer outputs. The report includes summary cards, sortable tables, and a sunburst diagram that shows the hierarchy `source → project/ref → issue type → severity`.
 
 From the workspace root:
@@ -199,6 +204,27 @@ The analyzer and the container orchestration use several environment variables a
 - **CLOC_PATH**: Optional override for the `cloc` executable name/path used for LOC calculation. Default source is `analyzer.cloc_path` in `config.yml` (fallback `cloc`). If this environment variable is set, it overrides the config value. If `cloc` is unavailable, the analyzer falls back to internal non-empty line counting for `.cs` files.
 - **BUNDLED_ANALYZER_PATH**: Path where the published CodeMetricsAnalyzer DLL is expected inside the image (used as a fallback when the analyzer project is not mounted). Default: `/opt/CodeMetricsAnalyzer`.
 - **PYTHONPATH**: Not required by the analyzer itself but useful when bind-mounting your workspace into the image so Python can import the `bulk_analyzer` package (examples in this README use `--env PYTHONPATH=/workspace`).
+- **CODECHECKER_EXPORT_DIR**: Optional override for the export directory used by method-level analyzer when writing CodeChecker-compatible artifacts. Default source is `codechecker.export_dir` in `config.yml` (fallback `../codechecker_reports`).
+
+### Optional CodeChecker visualization export (method-level mode)
+
+The method-level analyzer can export **its own CMA findings** in CodeChecker-compatible formats (for visualization).
+No CodeChecker analyzers are executed.
+
+Enable it in `config.yml`:
+
+```yaml
+codechecker:
+    enabled: true
+    export_dir: "../codechecker_reports"
+    export_plist: true
+    export_json: true
+```
+
+Notes:
+- Exported files are generated per analyzed commit under `codechecker_reports/<project>_<commit>/`.
+- `custom_metrics.plist` can be consumed by CodeChecker tooling/UI flows that accept plist reports.
+- `custom_metrics.json` follows the CodeChecker parse JSON schema for machine processing.
 
 Build-time argument and runtime variables for .NET installation:
 

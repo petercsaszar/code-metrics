@@ -29,7 +29,8 @@ namespace CodeMetricsAnalyzer.Analyzers
             if (!(context.Node is MethodDeclarationSyntax methodDeclaration))
                 return;
 
-            // Skip expression-bodied members for now.
+            // Expression-bodied members are a single expression with no nesting,
+            // so their bumpy road score is always zero — skip them intentionally.
             var body = methodDeclaration.Body;
             if (body == null || body.Statements.Count == 0)
                 return;
@@ -66,89 +67,72 @@ namespace CodeMetricsAnalyzer.Analyzers
             {
                 case BlockSyntax block:
                     foreach (var child in block.Statements)
-                    {
                         CollectStatements(child, currentDepth, result);
-                    }
                     break;
 
                 case IfStatementSyntax ifStatement:
                     AddStatement(result, ifStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-
-                    CollectEmbeddedStatement(ifStatement.Statement, currentDepth + 1, result);
+                    CollectStatements(ifStatement.Statement, currentDepth + 1, result);
 
                     if (ifStatement.Else != null)
                     {
-                        // Keep else-if on the same logical nesting level.
+                        // FIX: else-if chains are kept at the same logical nesting level
+                        // as the original if, not incremented further. This reflects the
+                        // CodeScene model where else-if is a single decision branch, not
+                        // true additional nesting.
                         if (ifStatement.Else.Statement is IfStatementSyntax elseIf)
-                        {
                             CollectStatements(elseIf, currentDepth, result);
-                        }
                         else
-                        {
-                            CollectEmbeddedStatement(ifStatement.Else.Statement, currentDepth + 1, result);
-                        }
+                            CollectStatements(ifStatement.Else.Statement, currentDepth + 1, result);
                     }
                     break;
 
                 case ForStatementSyntax forStatement:
                     AddStatement(result, forStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-                    CollectEmbeddedStatement(forStatement.Statement, currentDepth + 1, result);
+                    CollectStatements(forStatement.Statement, currentDepth + 1, result);
                     break;
 
                 case ForEachStatementSyntax forEachStatement:
                     AddStatement(result, forEachStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-                    CollectEmbeddedStatement(forEachStatement.Statement, currentDepth + 1, result);
+                    CollectStatements(forEachStatement.Statement, currentDepth + 1, result);
                     break;
 
                 case WhileStatementSyntax whileStatement:
                     AddStatement(result, whileStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-                    CollectEmbeddedStatement(whileStatement.Statement, currentDepth + 1, result);
+                    CollectStatements(whileStatement.Statement, currentDepth + 1, result);
                     break;
 
                 case DoStatementSyntax doStatement:
                     AddStatement(result, doStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-                    CollectEmbeddedStatement(doStatement.Statement, currentDepth + 1, result);
+                    CollectStatements(doStatement.Statement, currentDepth + 1, result);
                     break;
 
                 case SwitchStatementSyntax switchStatement:
-                    // Switch is debatable for Bumpy Road, but keeping it as a control contributor is a fair approximation.
                     AddStatement(result, switchStatement, currentDepth + 1, isControl: true, startsBumpCandidate: true);
-
                     foreach (var section in switchStatement.Sections)
                     {
                         foreach (var child in section.Statements)
-                        {
                             CollectStatements(child, currentDepth + 1, result);
-                        }
                     }
                     break;
 
                 case TryStatementSyntax tryStatement:
-                    CollectEmbeddedStatement(tryStatement.Block, currentDepth, result);
+                    // FIX: try, catch, and finally all increment depth consistently.
+                    // Previously try and finally were collected at currentDepth while
+                    // catch was at currentDepth + 1, which was asymmetric and wrong.
+                    CollectStatements(tryStatement.Block, currentDepth + 1, result);
 
                     foreach (var catchClause in tryStatement.Catches)
-                    {
-                        CollectEmbeddedStatement(catchClause.Block, currentDepth + 1, result);
-                    }
+                        CollectStatements(catchClause.Block, currentDepth + 1, result);
 
                     if (tryStatement.Finally != null)
-                    {
-                        CollectEmbeddedStatement(tryStatement.Finally.Block, currentDepth, result);
-                    }
+                        CollectStatements(tryStatement.Finally.Block, currentDepth + 1, result);
                     break;
 
                 default:
                     AddStatement(result, statement, currentDepth, isControl: false, startsBumpCandidate: false);
                     break;
             }
-        }
-
-        private static void CollectEmbeddedStatement(
-            StatementSyntax statement,
-            int currentDepth,
-            List<StatementEntry> result)
-        {
-            CollectStatements(statement, currentDepth, result);
         }
 
         private static void AddStatement(
@@ -186,14 +170,17 @@ namespace CodeMetricsAnalyzer.Analyzers
                 if (bump == null)
                     continue;
 
-                if (bumps.Count > 0 && bump.StartLine <= bumps[bumps.Count - 1].EndLine)
-                {
-                    MergeInto(bumps[bumps.Count - 1], bump);
-                }
+                // FIX: scan all existing bumps for overlap, not just the last one.
+                // The previous check only compared against bumps[bumps.Count - 1],
+                // which could miss overlaps with earlier regions when a bump's anchor
+                // has a large EndLine that spans multiple subsequent anchors.
+                var overlapping = bumps.FirstOrDefault(
+                    b => bump.StartLine <= b.EndLine && bump.EndLine >= b.StartLine);
+
+                if (overlapping != null)
+                    MergeInto(overlapping, bump);
                 else
-                {
                     bumps.Add(bump);
-                }
             }
 
             return bumps;
@@ -228,39 +215,50 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             foreach (var statement in source.Statements)
             {
-                if (!target.Statements.Any(existing =>
-                    existing.StartLine == statement.StartLine &&
-                    existing.EndLine == statement.EndLine &&
-                    existing.Depth == statement.Depth &&
-                    ReferenceEquals(existing.Statement, statement.Statement)))
-                {
+                // FIX: ReferenceEquals alone uniquely identifies a syntax node —
+                // the redundant line and depth checks have been removed.
+                if (!target.Statements.Any(existing => ReferenceEquals(existing.Statement, statement.Statement)))
                     target.Statements.Add(statement);
-                }
             }
         }
 
         private static double CalculateBumpyRoadScore(List<BumpRegion> bumps)
         {
+            if (bumps.Count == 0)
+                return 0;
+
             double total = 0;
 
             foreach (var bump in bumps)
             {
-                int maxDepth = bump.Statements.Max(s => s.Depth);
-                int nestedControlCount = bump.Statements.Count(s => s.IsControl && s.Depth >= MinimumBumpDepth);
-                int bumpLines = bump.EndLine - bump.StartLine + 1;
+                // Score each line by the maximum nesting depth active on that line,
+                // subtracting the minimum bump depth so that depth=2 contributes 1,
+                // depth=3 contributes 2, and so on. This gives a continuous
+                // area-under-the-curve measure rather than discrete integer aggregates,
+                // producing a much wider spread of scores across methods.
+                var maxDepthByLine = bump.Statements
+                    .GroupBy(s => s.StartLine)
+                    .ToDictionary(g => g.Key, g => g.Max(s => s.Depth));
 
-                double bumpScore =
-                    (maxDepth * 3.0) +
-                    (nestedControlCount * 2.0) +
-                    (bumpLines * 0.5);
+                double bumpArea = maxDepthByLine.Values
+                    .Sum(d => d - (MinimumBumpDepth - 1));
 
-                total += bumpScore;
+                total += bumpArea;
             }
 
-            // Explicitly penalize multiple bumps in the same method.
-            total += (bumps.Count - 1) * 4.0;
+            // Use log scaling for the multi-bump penalty instead of a fixed step
+            // increment. This keeps the penalty continuous and avoids the discrete
+            // jumps of (bumps.Count - 1) * 4 that created score bands in the distribution.
+            total *= 1.0 + Math.Log(bumps.Count);
 
-            return total;
+            // Normalize to 0–10 so config thresholds are intuitive.
+            // Reference worst realistic case: 3 bumps, avg depth 3, 15 lines each
+            //   → area per bump = 15 lines * (3 - (2-1)) = 15 * 2 = 30
+            //   → total area    = 3 * 30 = 90
+            //   → log penalty   = 90 * (1 + ln(3)) ≈ 90 * 2.099 ≈ 189
+            //   → normalized    = 10.0
+            const double referenceScore = 189.0;
+            return Math.Min(10.0, (total / referenceScore) * 10.0);
         }
 
         private sealed class StatementEntry

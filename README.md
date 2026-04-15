@@ -4,9 +4,12 @@ A tool for downloading gitlab projects from groups, finding milestones and then 
 
 ## Currently implemented metrics
 - Bumpy Road Code Smell
-- Function parameter count
+- Functional parameter count
 - LCOM4 metrics
 - LCOM5 metrics
+- Cyclomatic coplexity
+. Maintainability index
+- Class coupling
 
 ## Usage
 See the subfolders:
