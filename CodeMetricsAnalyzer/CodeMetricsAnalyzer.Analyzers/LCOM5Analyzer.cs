@@ -56,15 +56,17 @@ namespace CodeMetricsAnalyzer.Analyzers
                     if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax))
                         continue;
 
+                    var methodSemanticModel = semanticModel.Compilation.GetSemanticModel(syntax.SyntaxTree);
+
                     if (syntax.Body != null)
                     {
-                        var dataFlow = semanticModel.AnalyzeDataFlow(syntax.Body);
+                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(syntax.Body);
                         if (dataFlow != null)
                             CollectFieldAccesses(dataFlow, accessedFields);
                     }
                     else if (syntax.ExpressionBody != null)
                     {
-                        var dataFlow = semanticModel.AnalyzeDataFlow(
+                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(
                             syntax.ExpressionBody.Expression,
                             syntax.ExpressionBody.Expression);
                         if (dataFlow != null)

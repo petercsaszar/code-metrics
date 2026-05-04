@@ -52,18 +52,20 @@ namespace CodeMetricsAnalyzer.Analyzers
                     if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax methodNode))
                         continue;
 
+                    var methodSemanticModel = semanticModel.Compilation.GetSemanticModel(methodNode.SyntaxTree);
+
                     if (methodNode.Body == null && methodNode.ExpressionBody == null)
                         continue;
 
                     if (methodNode.Body != null)
                     {
-                        var dataFlow = semanticModel.AnalyzeDataFlow(methodNode.Body);
+                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(methodNode.Body);
                         if (dataFlow != null)
                             CollectFieldAccesses(dataFlow, accessedFields);
                     }
                     else if (methodNode.ExpressionBody != null)
                     {
-                        var dataFlow = semanticModel.AnalyzeDataFlow(
+                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(
                             methodNode.ExpressionBody.Expression,
                             methodNode.ExpressionBody.Expression);
                         if (dataFlow != null)
@@ -73,7 +75,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                     var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
                     foreach (var invocation in invocations)
                     {
-                        var called = semanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
+                        var called = methodSemanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
 
 
                         if (called != null
