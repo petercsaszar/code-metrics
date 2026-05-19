@@ -28,6 +28,7 @@ def main():
         default=os.environ.get("PUBLIC_ANALYSIS_MODE", "summary"),
         help="Choose aggregated summary scores or method-level diagnostics",
     )
+    parser.add_argument("--report-output", help="Optional path to write JSON report to inside container", default=None)
     args = parser.parse_args()
 
     repo_path = normalize_repo_path(args.repo_path)
@@ -85,6 +86,18 @@ def main():
         "custom": custom or {},
         "method": method,
     }
+
+    # Emit to stdout and optionally to a file inside the container
+    if args.report_output:
+        try:
+            os.makedirs(os.path.dirname(args.report_output), exist_ok=True)
+        except Exception:
+            pass
+        try:
+            with open(args.report_output, "w", encoding="utf-8") as of:
+                json.dump(payload, of)
+        except Exception as e:
+            sys.stderr.write(f"Failed to write report to {args.report_output}: {e}\n")
 
     json.dump(payload, sys.stdout)
 

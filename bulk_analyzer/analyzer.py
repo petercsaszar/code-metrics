@@ -13,6 +13,7 @@ except ImportError:
     from milestone_commit_finder import get_milestone_commits
     from dotnet_environment import ensure_dotnet_environment
 import logging
+import argparse
 
 # Configure logging
 WORKSPACE = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -58,6 +59,10 @@ UNITY_VERSION = config["analyzer"]["unity_version"]
 CLOC_BINARY = config["analyzer"].get("cloc_path", "cloc")
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
+# Globals for CLI-driven persisted state (can be overridden from __main__)
+REPORT_OUTPUT = os.getenv("REPORT_OUTPUT", "analysis_results.json")
+PROCESSED_COMMITS_PATH = os.getenv("PROCESSED_COMMITS_PATH", "processed_commits.json")
+FORCE_REANALYZE = False
 
 
 def _calculate_lines_of_code_fallback(repo_path, extensions=(".cs",), exclude_dirs=None):
@@ -317,6 +322,12 @@ def analyze_milestone(milestone_keywords = None):
     #         commit_data = json.load(file)
     commit_data = get_milestone_commits(milestone_keywords)
 
+    # load processed commits state
+    try:
+        with open(PROCESSED_COMMITS_PATH, "r", encoding="utf-8") as pf:
+            processed_commits = json.load(pf)
+    except Exception:
+        processed_commits = {}
 
     results = {}
 
@@ -326,6 +337,12 @@ def analyze_milestone(milestone_keywords = None):
             commit_id = project_data.get("last_commit_id")
 
             if not commit_id or not repo_path:
+                continue
+
+            # skip if we've already processed this commit for this project
+            processed_for_project = processed_commits.get(str(project_id), [])
+            if (commit_id in processed_for_project) and (not FORCE_REANALYZE):
+                logging.info("Skipping already processed project %s @ %s", project_id, commit_id)
                 continue
 
             checkout_commit(repo_path, commit_id)
@@ -346,6 +363,16 @@ def analyze_milestone(milestone_keywords = None):
                     "lines_of_code": lines_of_code,
                 }
                 logging.info("LOC calculated for project %s at %s: %s", project_id, commit_id, lines_of_code)
+
+                # persist processed commit immediately
+                processed_for_project = processed_commits.setdefault(str(project_id), [])
+                if commit_id not in processed_for_project:
+                    processed_for_project.append(commit_id)
+                    try:
+                        with open(PROCESSED_COMMITS_PATH, "w", encoding="utf-8") as pf:
+                            json.dump(processed_commits, pf, indent=2)
+                    except Exception as e:
+                        logging.warning("Could not persist processed commits to %s: %s", PROCESSED_COMMITS_PATH, e)
         except Exception as e:
             print(f"❌ Error analyzing project {project_id}: {e}")
 
@@ -354,16 +381,89 @@ def analyze_milestone(milestone_keywords = None):
 
 def analyze_all_milestones():
     """Analyze all milestone commits dynamically."""
+    # Decide on output directory. REPORT_OUTPUT may be a file path or directory.
+    out_path = REPORT_OUTPUT
+    out_dir = out_path if os.path.isdir(out_path) else os.path.dirname(out_path) or "."
+    os.makedirs(out_dir, exist_ok=True)
 
+    per_milestone_files = []
     ind = 1
     for milestone in MILESTONES:
         milestone_results = analyze_milestone(milestone)
+        fname = os.path.join(out_dir, f"analysis_results_{ind}.json")
+        try:
+            with open(fname, "w", encoding="utf-8") as f:
+                json.dump(milestone_results or {}, f, indent=2)
+            per_milestone_files.append(fname)
+            print(f"Saved milestone results to {fname}")
+        except Exception as e:
+            logging.warning("Could not write milestone results to %s: %s", fname, e)
+        ind += 1
 
-        with open(f"analysis_results_{ind}.json", "w") as f:
-            json.dump(milestone_results, f, indent=4)
-        ind = ind + 1
+    # Generate per-project HTML reports by filtering per-milestone JSONs
+    try:
+        from bulk_analyzer import html_report_generator as hrg  # type: ignore
+        html_available = True
+    except Exception:
+        html_available = False
 
-    print("✅ Bumpy Road Analysis complete! Results saved to files.")
+    # Collect all project ids seen across milestone files
+    all_projects = set()
+    for mf in per_milestone_files:
+        try:
+            with open(mf, "r", encoding="utf-8") as fh:
+                payload = json.load(fh) or {}
+            for k in payload.keys():
+                all_projects.add(str(k))
+        except Exception:
+            continue
+
+    if not per_milestone_files:
+        print("No milestone result files produced; nothing to report.")
+        return
+
+    tmp_base = os.path.join(out_dir, "_tmp_inputs")
+    os.makedirs(tmp_base, exist_ok=True)
+
+    for project_id in sorted(all_projects):
+        # create per-project input files
+        project_inputs = []
+        for idx, mf in enumerate(per_milestone_files, start=1):
+            try:
+                with open(mf, "r", encoding="utf-8") as fh:
+                    payload = json.load(fh) or {}
+                if project_id in payload:
+                    single = {project_id: payload[project_id]}
+                    tmpf = os.path.join(tmp_base, f"proj_{project_id}_m{idx}.json")
+                    with open(tmpf, "w", encoding="utf-8") as tf:
+                        json.dump(single, tf, indent=2)
+                    project_inputs.append(tmpf)
+            except Exception:
+                continue
+
+        if not project_inputs:
+            continue
+
+        # generate HTML using the module if available; otherwise call module as script
+        out_html = os.path.join(out_dir, f"project_{project_id}_milestones.html")
+        if html_available:
+            try:
+                hrg_main = getattr(hrg, "parse_args", None)
+            except Exception:
+                hrg_main = None
+        # prefer subprocess call for isolation
+        try:
+            cmd = [sys.executable, "-m", "bulk_analyzer.html_report_generator", "--output", out_html, "--inputs"] + project_inputs
+            subprocess.run(cmd, check=True)
+            print(f"Generated HTML report for project {project_id}: {out_html}")
+        except Exception as e:
+            logging.warning("Failed to generate HTML for project %s: %s", project_id, e)
+
+    # cleanup temporary inputs
+    try:
+        shutil.rmtree(tmp_base, ignore_errors=True)
+    except Exception:
+        pass
 
 def find_solution_file(repo_path):
     """Recursively searches for a .sln file in the given repository directory."""
@@ -428,5 +528,21 @@ def update_unity_project_version(project_path):
     print(f"[OK] Updated Unity version to {UNITY_VERSION}")
 
 
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Bulk analyzer runner")
+    parser.add_argument("--report-output", help="Path to write combined analysis JSON", default=None)
+    parser.add_argument("--processed-commits-file", help="Path to persist processed commits state", default=None)
+    parser.add_argument("--force", action="store_true", help="Force reanalysis even if commit was processed before")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    args = _parse_args()
+    if args.report_output:
+        REPORT_OUTPUT = args.report_output
+    if args.processed_commits_file:
+        PROCESSED_COMMITS_PATH = args.processed_commits_file
+    if args.force:
+        FORCE_REANALYZE = True
+
     analyze_all_milestones()
