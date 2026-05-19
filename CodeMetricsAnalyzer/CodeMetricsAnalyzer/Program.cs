@@ -109,7 +109,7 @@ public class Program
                 AnalyzerConfiguration = analyzerConfiguration
             };
 
-            var analyzeCommand = new AnalyzeCommand(options);
+            using var analyzeCommand = new AnalyzeCommand(options);
             context.ExitCode = await analyzeCommand.RunAnalysisAsync(cancellationToken);
         });
 

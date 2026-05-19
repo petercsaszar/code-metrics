@@ -1,11 +1,11 @@
-﻿using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
+using System.Collections.Immutable;
+using System.Linq;
+using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
-using System.Collections.Immutable;
-using System.Linq;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
@@ -19,20 +19,26 @@ namespace CodeMetricsAnalyzer.Analyzers
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
             => ImmutableArray.Create(DiagnosticDescriptors.FunctionParameterCountRule);
 
-
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
-            var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-            int parameterCount = methodDeclaration.ParameterList.Parameters
-                .Count(p => !p.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.ThisKeyword)));
+            if (!TryGetMemberComponents(context.Node,
+                    out var identifier, out _, out _, out var parameterList))
+                return;
+
+            // Accessors have no parameter list — nothing to count.
+            if (parameterList == null)
+                return;
+
+            int parameterCount = parameterList.Parameters
+                .Count(p => !p.Modifiers.Any(m => m.IsKind(SyntaxKind.ThisKeyword)));
 
             if (parameterCount > _config.FunctionParameterCountAnalysis.ParameterCountThreshold)
             {
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.FunctionParameterCountRule,
-                    methodDeclaration.Identifier.GetLocation(),
-                    methodDeclaration.Identifier.Text,
+                    identifier.GetLocation(),
+                    identifier.Text,
                     parameterCount,
                     _config.FunctionParameterCountAnalysis.ParameterCountThreshold);
             }

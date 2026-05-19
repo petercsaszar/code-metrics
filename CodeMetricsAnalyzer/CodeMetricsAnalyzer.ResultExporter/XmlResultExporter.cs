@@ -21,7 +21,7 @@ public class XmlResultExporter : IResultExporter
                 new XAttribute("Id", group.Key),
                 new XAttribute("Title", group.First().Title),
                 new XAttribute("Count", group.Count()),
-                new XElement("Description", group.First().Title)
+                new XElement("Description", group.First().Description)
             ));
 
         var summaryElement = new XElement(

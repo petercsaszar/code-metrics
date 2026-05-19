@@ -1,20 +1,22 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Linq;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Operations;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public class MaintainabilityIndexAnalyzer : MethodAnalyzer
     {
+        // Oman & Hagemeister (1992) formula coefficients, Microsoft-normalized variant (0–100 scale).
+        private const double MiMax = 171.0;
+        private const double HalsteadCoefficient = 5.2;
+        private const double CyclomaticCoefficient = 0.23;
+        private const double LoCCoefficient = 16.2;
+
         public MaintainabilityIndexAnalyzer(AnalyzerConfiguration config) : base(config)
         {
         }
@@ -24,61 +26,39 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
-            var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-
-            if (methodDeclaration.Body is null && methodDeclaration.ExpressionBody is null)
+            if (!TryGetMemberComponents(context.Node,
+                    out var identifier, out _, out _, out _))
                 return;
 
-            var semanticModel = context.SemanticModel;
-
-            var methodBodyOperation =
-                semanticModel.GetOperation(methodDeclaration, context.CancellationToken) as IMethodBodyOperation;
-
-            IOperation rootOperation =
-                methodBodyOperation?.BlockBody ??
-                methodBodyOperation?.ExpressionBody ??
-                (methodDeclaration.Body != null
-                    ? semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken)
-                    : methodDeclaration.ExpressionBody != null
-                        ? semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken)
-                        : null);
-
-            if (rootOperation is null)
+            var rootOp = GetMemberOperation(context.SemanticModel, context.Node, context.CancellationToken);
+            if (rootOp == null)
                 return;
 
-            double halsteadVolume = MetricsHelper.CalculateHalsteadVolume(rootOperation);
-            int cyclomaticComplexity = MetricsHelper.CalculateCyclomaticComplexity(rootOperation);
-            int linesOfCode = MetricsHelper.CalculateLinesOfCode(methodDeclaration);
+            double halsteadVolume = MetricsHelper.CalculateHalsteadVolume(rootOp);
+            int cyclomaticComplexity = MetricsHelper.CalculateCyclomaticComplexity(rootOp);
+            int linesOfCode = MetricsHelper.CalculateLinesOfCode(context.Node);
 
-            double maintainabilityIndex = 171.0;
+            double mi = MiMax;
 
             if (halsteadVolume > 0)
-            {
-                maintainabilityIndex -= 5.2 * Math.Log(halsteadVolume);
-            }
+                mi -= HalsteadCoefficient * Math.Log(halsteadVolume);
 
-            maintainabilityIndex -= 0.23 * cyclomaticComplexity;
+            mi -= CyclomaticCoefficient * cyclomaticComplexity;
 
             if (linesOfCode > 0)
-            {
-                maintainabilityIndex -= 16.2 * Math.Log(linesOfCode);
-            }
+                mi -= LoCCoefficient * Math.Log(linesOfCode);
 
-            maintainabilityIndex = Math.Max(0, (maintainabilityIndex / 171.0) * 100.0);
+            mi = Math.Max(0, (mi / MiMax) * 100.0);
 
-            if (maintainabilityIndex < _config.MaintainabilityIndexAnalysis.MinimumMaintainabilityIndex)
+            if (mi < _config.MaintainabilityIndexAnalysis.MinimumMaintainabilityIndex)
             {
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.MaintainabilityIndexRule,
-                    methodDeclaration.Identifier.GetLocation(),
-                    methodDeclaration.Identifier.Text,
-                    Math.Round(maintainabilityIndex, 2));
+                    identifier.GetLocation(),
+                    identifier.Text,
+                    Math.Round(mi, 2));
             }
         }
-
-        
-
-        
     }
 }

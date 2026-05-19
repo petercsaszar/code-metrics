@@ -22,7 +22,7 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
-            var classDeclaration = (ClassDeclarationSyntax)context.Node;
+            var classDeclaration = (TypeDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
 
             var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration, context.CancellationToken) as INamedTypeSymbol;
@@ -203,6 +203,14 @@ namespace CodeMetricsAnalyzer.Analyzers
                 var constructorDeclaration = memberSyntax as ConstructorDeclarationSyntax;
                 if (constructorDeclaration != null)
                 {
+                    // `: base(...)` or `: this(...)` initializer — types used there count as coupling.
+                    if (constructorDeclaration.Initializer != null)
+                    {
+                        var initOperation = semanticModel.GetOperation(constructorDeclaration.Initializer, context.CancellationToken);
+                        if (initOperation != null)
+                            CollectCoupledTypesFromOperation(initOperation, coupledTypes);
+                    }
+
                     if (constructorDeclaration.Body != null)
                     {
                         var bodyOperation = semanticModel.GetOperation(constructorDeclaration.Body, context.CancellationToken);

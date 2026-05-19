@@ -1,9 +1,8 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
@@ -13,7 +12,6 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
             switch (operation.Kind)
             {
-                case OperationKind.CaseClause:
                 case OperationKind.SwitchExpressionArm:
                 case OperationKind.CatchClause:
                 case OperationKind.Coalesce:
@@ -21,6 +19,10 @@ namespace CodeMetricsAnalyzer.Analyzers
                 case OperationKind.ConditionalAccess:
                 case OperationKind.Loop:
                     return true;
+
+                // Count case clauses except default — default is the "else" path in McCabe's model.
+                case OperationKind.CaseClause:
+                    return !(operation is IDefaultCaseClauseOperation);
 
                 case OperationKind.BinaryOperator:
                     var binaryOp = (IBinaryOperation)operation;
@@ -100,11 +102,11 @@ namespace CodeMetricsAnalyzer.Analyzers
                     operatorText = unary.OperatorKind.ToString();
                     return true;
 
-                case IConditionalOperation conditional:
+                case IConditionalOperation _:
                     operatorText = "?:";
                     return true;
 
-                case ICoalesceOperation coalesce:
+                case ICoalesceOperation _:
                     operatorText = "??";
                     return true;
 
@@ -128,7 +130,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                     operatorText = branch.BranchKind.ToString();
                     return true;
 
-                case IReturnOperation returnOp:
+                case IReturnOperation _:
                     operatorText = "return";
                     return true;
 
@@ -170,19 +172,94 @@ namespace CodeMetricsAnalyzer.Analyzers
             }
         }
 
-        public static int CalculateLinesOfCode(MethodDeclarationSyntax method)
+        /// <summary>
+        /// Counts physical lines of code for a method, constructor, or property accessor body.
+        /// </summary>
+        public static int CalculateLinesOfCode(SyntaxNode memberNode)
         {
-            if (method.Body != null)
+            BlockSyntax body = null;
+            bool hasExpressionBody = false;
+
+            switch (memberNode)
             {
-                var lineSpan = method.Body.SyntaxTree.GetLineSpan(method.Body.Span);
+                case MethodDeclarationSyntax m:
+                    body = m.Body;
+                    hasExpressionBody = m.ExpressionBody != null;
+                    break;
+                case ConstructorDeclarationSyntax c:
+                    body = c.Body;
+                    hasExpressionBody = c.ExpressionBody != null;
+                    break;
+                case AccessorDeclarationSyntax a:
+                    body = a.Body;
+                    hasExpressionBody = a.ExpressionBody != null;
+                    break;
+            }
+
+            if (body != null)
+            {
+                var lineSpan = body.SyntaxTree.GetLineSpan(body.Span);
                 return Math.Max(1, lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1);
             }
 
-            if (method.ExpressionBody != null)
-            {          
-                return 1;
+            return hasExpressionBody ? 1 : 0;
+        }
+
+        /// <summary>
+        /// Collects instance field and property accesses from within an operation tree,
+        /// restricted to members of <paramref name="containingType"/>.
+        /// This is used by LCOM analyzers instead of DataFlowAnalysis, which does not
+        /// see auto-property backing fields accessed through property syntax.
+        /// </summary>
+        public static void CollectMemberAccesses(
+            IOperation rootOperation,
+            HashSet<ISymbol> accessedMembers,
+            INamedTypeSymbol containingType)
+        {
+            foreach (var op in rootOperation.DescendantsAndSelf())
+            {
+                if (op is IFieldReferenceOperation fieldRef)
+                {
+                    if (!fieldRef.Field.IsStatic &&
+                        !fieldRef.Field.IsImplicitlyDeclared &&
+                        SymbolEqualityComparer.Default.Equals(
+                            fieldRef.Field.ContainingType.OriginalDefinition,
+                            containingType.OriginalDefinition))
+                    {
+                        accessedMembers.Add(fieldRef.Field.OriginalDefinition);
+                    }
+                }
+                else if (op is IPropertyReferenceOperation propRef)
+                {
+                    if (!propRef.Property.IsStatic &&
+                        !propRef.Property.IsIndexer &&
+                        SymbolEqualityComparer.Default.Equals(
+                            propRef.Property.ContainingType.OriginalDefinition,
+                            containingType.OriginalDefinition))
+                    {
+                        accessedMembers.Add(propRef.Property.OriginalDefinition);
+                    }
+                }
             }
-            return 0;
+        }
+
+        /// <summary>
+        /// Returns the count of instance members (non-static explicit fields + non-static
+        /// non-indexer properties) that are tracked for LCOM calculations.
+        /// Auto-property backing fields (IsImplicitlyDeclared) are excluded to avoid
+        /// double-counting alongside their corresponding property.
+        /// </summary>
+        public static int GetTrackedMemberCount(INamedTypeSymbol typeSymbol)
+        {
+            int count = 0;
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                if (member is IFieldSymbol field && !field.IsStatic && !field.IsImplicitlyDeclared)
+                    count++;
+                else if (member is IPropertySymbol property && !property.IsStatic && !property.IsIndexer)
+                    count++;
+            }
+            return count;
         }
     }
 }

@@ -77,7 +77,7 @@ public class GitInfoProvider
     {
         try
         {
-            var process = new Process
+            using var process = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
@@ -90,11 +90,11 @@ public class GitInfoProvider
                     CreateNoWindow = true
                 }
             };
-            
+
             process.Start();
             var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
             await process.WaitForExitAsync(cancellationToken);
-            
+
             return process.ExitCode == 0 ? output : null;
         }
         catch

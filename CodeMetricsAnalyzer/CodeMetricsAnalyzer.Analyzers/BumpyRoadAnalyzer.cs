@@ -26,12 +26,12 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
-            if (!(context.Node is MethodDeclarationSyntax methodDeclaration))
+            if (!TryGetMemberComponents(context.Node,
+                    out var identifier, out var body, out _, out _))
                 return;
 
             // Expression-bodied members are a single expression with no nesting,
             // so their bumpy road score is always zero — skip them intentionally.
-            var body = methodDeclaration.Body;
             if (body == null || body.Statements.Count == 0)
                 return;
 
@@ -52,8 +52,8 @@ namespace CodeMetricsAnalyzer.Analyzers
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.BumpyRoadRule,
-                    methodDeclaration.Identifier.GetLocation(),
-                    methodDeclaration.Identifier.Text,
+                    identifier.GetLocation(),
+                    identifier.Text,
                     Math.Round(score, 2));
             }
         }

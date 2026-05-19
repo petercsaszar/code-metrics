@@ -2,6 +2,6 @@ namespace CodeMetricsAnalyzer.Analyzers.Configurations
 {
     public class CyclomaticComplexityAnalysisConfiguration
     {
-        public int MaximumComplexity { get; set; }
+        public int MaximumComplexity { get; set; } = 6;
     }
 }

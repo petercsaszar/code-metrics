@@ -17,7 +17,7 @@ using System.Xml.Linq;
 
 namespace CodeMetricsAnalyzer.Commands.Analyze
 {
-    public class AnalyzeCommand
+    public class AnalyzeCommand : IDisposable
     {
         private readonly AnalyzeCommandOptions _options;
         private readonly IResultExporter _resultExporter = new XmlResultExporter();
@@ -279,7 +279,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 var project = solution.GetProject(projectId);
                 if (project == null)
                 {
-                    throw new Exception();
+                    throw new InvalidOperationException($"Project with id '{projectId}' was not found in the solution.");
                 }
 
                 if (project.Language != LanguageNames.CSharp)
@@ -298,7 +298,7 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             var compilation = await project.GetCompilationAsync(cancellationToken);
             if (compilation == null)
             {
-                throw new Exception();
+                throw new InvalidOperationException($"Could not obtain compilation for project '{project.Name}'.");
             }
 
             var compilationWithAnalyzers = new CompilationWithAnalyzers(compilation, analyzers, null as AnalyzerOptions);
@@ -352,11 +352,17 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
             ConsoleWriteLineWithColor(ConsoleColor.Green, $"{diagnosticCount} {((diagnosticCount == 1) ? "diagnostic" : "diagnostics")} found");
         }
 
+        public void Dispose()
+        {
+            _workspace?.Dispose();
+        }
+
         private static void ConsoleWriteLineWithColor(ConsoleColor color, string message)
         {
+            var original = Console.ForegroundColor;
             Console.ForegroundColor = color;
             Console.WriteLine(message);
-            Console.ForegroundColor = ConsoleColor.White;
+            Console.ForegroundColor = original;
         }
     }
 }

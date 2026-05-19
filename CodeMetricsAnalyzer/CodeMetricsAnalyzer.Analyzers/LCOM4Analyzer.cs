@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
@@ -22,80 +22,77 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
-            var classDecl = (ClassDeclarationSyntax)context.Node;
+            var typeDecl = (TypeDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
 
-
-            var classSymbol = semanticModel.GetDeclaredSymbol(classDecl) as INamedTypeSymbol;
-            if (classSymbol == null)
+            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl) as INamedTypeSymbol;
+            if (typeSymbol == null)
                 return;
 
-            var methods = classSymbol.GetMembers().OfType<IMethodSymbol>()
+            // Only non-static ordinary methods are meaningful for LCOM.
+            var methods = typeSymbol.GetMembers().OfType<IMethodSymbol>()
                 .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic)
                 .ToList();
 
-            var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
+            int memberCount = MetricsHelper.GetTrackedMemberCount(typeSymbol);
 
-            if (methods.Count < _config.LCOM4Analysis.MinimumMethodCount || fields.Count < _config.LCOM4Analysis.MinimumFieldCount)
+            if (methods.Count < _config.LCOM4Analysis.MinimumMethodCount ||
+                memberCount < _config.LCOM4Analysis.MinimumMemberCount)
                 return;
 
+            // O(1) membership test for called-method detection (fixes O(n) per invocation).
+            var methodSet = new HashSet<IMethodSymbol>(methods, SymbolEqualityComparer.Default);
+
             var methodGraph = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
-            var fieldAccessMap = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
+            var memberAccessMap = new Dictionary<IMethodSymbol, HashSet<ISymbol>>(SymbolEqualityComparer.Default);
 
             foreach (var method in methods)
             {
-                var connected = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-                var accessedFields = new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
+                var connectedByCall = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+                var accessedMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
                     if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax methodNode))
                         continue;
 
+                    // Use the tree-specific semantic model so cross-file partial classes work.
                     var methodSemanticModel = semanticModel.Compilation.GetSemanticModel(methodNode.SyntaxTree);
 
-                    if (methodNode.Body == null && methodNode.ExpressionBody == null)
-                        continue;
-
+                    // Collect field + property accesses via operation analysis so that
+                    // auto-property access (this.Prop = x) is counted, not just raw field writes.
+                    Microsoft.CodeAnalysis.IOperation rootOp = null;
                     if (methodNode.Body != null)
-                    {
-                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(methodNode.Body);
-                        if (dataFlow != null)
-                            CollectFieldAccesses(dataFlow, accessedFields);
-                    }
-                    else if (methodNode.ExpressionBody != null)
-                    {
-                        var dataFlow = methodSemanticModel.AnalyzeDataFlow(
-                            methodNode.ExpressionBody.Expression,
-                            methodNode.ExpressionBody.Expression);
-                        if (dataFlow != null)
-                            CollectFieldAccesses(dataFlow, accessedFields);
-                    }
+                        rootOp = methodSemanticModel.GetOperation(methodNode.Body);
+                    else if (methodNode.ExpressionBody?.Expression != null)
+                        rootOp = methodSemanticModel.GetOperation(methodNode.ExpressionBody.Expression);
 
-                    var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
-                    foreach (var invocation in invocations)
+                    if (rootOp != null)
+                        MetricsHelper.CollectMemberAccesses(rootOp, accessedMembers, typeSymbol);
+
+                    // Connect methods that call each other directly.
+                    foreach (var invocation in methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
                     {
                         var called = methodSemanticModel.GetSymbolInfo(invocation).Symbol as IMethodSymbol;
-
-
-                        if (called != null
-                            && methods.Any(m => SymbolEqualityComparer.Default.Equals(m, called))
-                            && !SymbolEqualityComparer.Default.Equals(called, method))
+                        if (called != null &&
+                            methodSet.Contains(called) &&
+                            !SymbolEqualityComparer.Default.Equals(called, method))
                         {
-                            connected.Add(called);
+                            connectedByCall.Add(called);
                         }
                     }
                 }
 
-                fieldAccessMap[method] = accessedFields;
-                methodGraph[method] = connected;
+                memberAccessMap[method] = accessedMembers;
+                methodGraph[method] = connectedByCall;
             }
 
+            // Connect methods that share at least one accessed member.
             for (int i = 0; i < methods.Count; i++)
             {
                 for (int j = i + 1; j < methods.Count; j++)
                 {
-                    if (fieldAccessMap[methods[i]].Overlaps(fieldAccessMap[methods[j]]))
+                    if (memberAccessMap[methods[i]].Overlaps(memberAccessMap[methods[j]]))
                     {
                         methodGraph[methods[i]].Add(methods[j]);
                         methodGraph[methods[j]].Add(methods[i]);
@@ -103,6 +100,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                 }
             }
 
+            // Count connected components via DFS.
             var visited = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
             int components = 0;
 
@@ -112,7 +110,6 @@ namespace CodeMetricsAnalyzer.Analyzers
                     continue;
 
                 components++;
-
                 var stack = new Stack<IMethodSymbol>();
                 stack.Push(method);
 
@@ -132,20 +129,9 @@ namespace CodeMetricsAnalyzer.Analyzers
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.LCOM4Rule,
-                    classDecl.Identifier.GetLocation(),
-                    classSymbol.Name,
+                    typeDecl.Identifier.GetLocation(),
+                    typeSymbol.Name,
                     components);
-            }
-        }
-
-        private static void CollectFieldAccesses(
-            Microsoft.CodeAnalysis.DataFlowAnalysis dataFlow,
-            HashSet<IFieldSymbol> accessedFields)
-        {
-            foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
-            {
-                if (symbol is IFieldSymbol fieldSymbol)
-                    accessedFields.Add(fieldSymbol);
             }
         }
     }

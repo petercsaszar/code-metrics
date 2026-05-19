@@ -32,7 +32,7 @@ namespace CodeMetricsAnalyzer.Analyzers.Diagnostics
         public static readonly DiagnosticDescriptor LCOM4Rule = new DiagnosticDescriptor(
             id: DiagnosticIdentifiers.LCOM4,
             title: "Lack of Cohesion of Methods (LCOM4)",
-            messageFormat: "Class '{0}' has a high LCOM4 score ({1:F2})",
+            messageFormat: "Class '{0}' has a high LCOM4 score ({1} components)",
             category: "CodeMetrics",
             defaultSeverity: DiagnosticSeverity.Warning,
             isEnabledByDefault: true,

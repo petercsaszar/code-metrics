@@ -125,21 +125,21 @@ public class HistoricalDataCollection
         if (!Directory.Exists(directoryPath))
             return collection;
 
-        var xmlFiles = Directory.GetFiles(directoryPath, "*.xml")
-            .OrderByDescending(f => File.GetLastWriteTimeUtc(f))
-            .Take(100);
+        // Load all files first, then sort by commit date before taking the 100 most recent.
+        // Sorting by file write time before parsing would pick the wrong 100 entries if
+        // files were copied or the filesystem timestamps were modified.
+        var xmlFiles = Directory.GetFiles(directoryPath, "*.xml");
 
         foreach (var file in xmlFiles)
         {
             var metric = HistoricalMetricsDto.LoadFromXml(file);
             if (metric != null)
-            {
                 collection.Metrics.Add(metric);
-            }
         }
 
         collection.Metrics = collection.Metrics
             .OrderByDescending(m => m.CommitDate)
+            .Take(100)
             .ToList();
 
         return collection;

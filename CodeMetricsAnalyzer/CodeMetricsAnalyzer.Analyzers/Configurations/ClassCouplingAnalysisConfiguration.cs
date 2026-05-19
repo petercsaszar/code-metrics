@@ -2,6 +2,6 @@ namespace CodeMetricsAnalyzer.Analyzers.Configurations
 {
     public class ClassCouplingAnalysisConfiguration
     {
-        public int MaximumClassCoupling { get; set; }
+        public int MaximumClassCoupling { get; set; } = 15;
     }
 }
