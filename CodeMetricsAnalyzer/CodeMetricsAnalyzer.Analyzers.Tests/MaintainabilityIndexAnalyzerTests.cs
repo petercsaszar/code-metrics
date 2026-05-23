@@ -250,8 +250,8 @@ public class MaintainabilityIndexAnalyzerTests
     [Theory]
     [InlineData(0.0, 0, 0, 100.0)]     // no operators, no lines → raw 171/171*100 = 100
     [InlineData(1.0, 1, 1, 99.87)]     // V=1 → ln(1)=0; LOC=1 → ln(1)=0 → (171-0-0.23-0)/171*100
-    [InlineData(8.0, 1, 1, 93.54)]     // V=8, CC=1, LOC=1 (expression body) — simple Add method
-    [InlineData(8.0, 1, 3, 83.13)]     // V=8, CC=1, LOC=3 (multi-line Add method)
+    [InlineData(8.0, 1, 1, 93.54)]     // V=8, CC=1, LOC=1 — simple single-statement method
+    [InlineData(8.0, 1, 3, 83.13)]     // V=8, CC=1, LOC=3 — formula-only check with 3 logical lines
     public void MIFormula_KnownInputs_MatchExpectedOutput(
         double halsteadVolume, int cc, int loc, double expectedMi)
     {

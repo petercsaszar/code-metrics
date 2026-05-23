@@ -173,7 +173,9 @@ namespace CodeMetricsAnalyzer.Analyzers
         }
 
         /// <summary>
-        /// Counts physical lines of code for a method, constructor, or property accessor body.
+        /// Counts logical lines of code (executable statements) for a method, constructor, or
+        /// property accessor body — matching Visual Studio's definition, which excludes blank
+        /// lines, comments, and braces.
         /// </summary>
         public static int CalculateLinesOfCode(SyntaxNode memberNode)
         {
@@ -198,8 +200,13 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             if (body != null)
             {
-                var lineSpan = body.SyntaxTree.GetLineSpan(body.Span);
-                return Math.Max(1, lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1);
+                int count = 0;
+                foreach (var node in body.DescendantNodes())
+                {
+                    if (node is StatementSyntax && !(node is BlockSyntax))
+                        count++;
+                }
+                return Math.Max(1, count);
             }
 
             return hasExpressionBody ? 1 : 0;

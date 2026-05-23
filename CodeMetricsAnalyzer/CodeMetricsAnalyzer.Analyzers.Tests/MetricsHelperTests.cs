@@ -39,9 +39,9 @@ public class MetricsHelperTests
     }
 
     [Fact]
-    public void LinesOfCode_ThreeLineBlockBody_ReturnsThree()
+    public void LinesOfCode_MultiLineBlockBodyOneStatement_ReturnsOne()
     {
-        // Body spans three lines: opening brace, return statement, closing brace.
+        // Physical lines: 3 (brace, return, brace). Logical lines: 1 (one statement).
         const string source = """
             class C {
                 int Add(int a, int b)
@@ -51,12 +51,13 @@ public class MetricsHelperTests
             }
             """;
         var (_, method) = RoslynTestHelper.GetFirstMethodOperation(source);
-        Assert.Equal(3, MetricsHelper.CalculateLinesOfCode(method));
+        Assert.Equal(1, MetricsHelper.CalculateLinesOfCode(method));
     }
 
     [Fact]
-    public void LinesOfCode_FiveLineBlockBody_ReturnsFive()
+    public void LinesOfCode_BlockBodyFourStatements_ReturnsFour()
     {
+        // Physical lines: 6 (brace, 3 declarations, return, brace). Logical lines: 4 (statements).
         const string source = """
             class C {
                 int Method(int a, int b)
@@ -69,8 +70,7 @@ public class MetricsHelperTests
             }
             """;
         var (_, method) = RoslynTestHelper.GetFirstMethodOperation(source);
-        // { ... } spans: {, x=, y=, z=, return, } = 6 lines
-        Assert.Equal(6, MetricsHelper.CalculateLinesOfCode(method));
+        Assert.Equal(4, MetricsHelper.CalculateLinesOfCode(method));
     }
 
     // -------------------------------------------------------------------------

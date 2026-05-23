@@ -3,6 +3,7 @@ import re
 import json
 import subprocess
 import shutil
+import uuid
 import git
 import yaml
 import requests
@@ -54,8 +55,6 @@ CLONE_DIR = config["project"]["clone_dir"]
 ANALYZER_DIR = config["analyzer"]["project_dir"]
 MSBUILD_DIR = config["analyzer"]["msbuild_dir"]
 ANALYZER_PROJECT_FILE = config["analyzer"]["project_file"]
-UNITY_PATH = config["analyzer"]["unity_path"]
-UNITY_VERSION = config["analyzer"]["unity_version"]
 CLOC_BINARY = config["analyzer"].get("cloc_path", "cloc")
 
 HEADERS = {"PRIVATE-TOKEN": TOKEN}
@@ -213,8 +212,15 @@ def checkout_commit(repo_path, commit_id):
 
     print(f"Checked out commit {commit_id}")
 
-def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
-    """Run the roslyn analyzers."""
+def run_analyzers(repo_path, solution_path=None, custom_build_command=None,
+                  report_output=None, history_dir=None):
+    """Run the roslyn analyzers.
+
+    When *report_output* is provided the .NET HtmlReportGenerator is invoked
+    (--report-output flag) to produce an incremental multi-page HTML report.
+    *history_dir* overrides where historical XML snapshots are stored; it
+    defaults to <report_output>/history when not given.
+    """
     project_path = os.path.join(ANALYZER_DIR, ANALYZER_PROJECT_FILE)
     if not solution_path:
         solution_path = find_solution_file(repo_path)
@@ -250,6 +256,13 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None):
             ]
     if MSBUILD_DIR and os.path.isdir(MSBUILD_DIR):
         analyze_command += ["--msbuild-path", MSBUILD_DIR]
+
+    if report_output:
+        os.makedirs(report_output, exist_ok=True)
+        analyze_command += ["--report-output", report_output]
+        effective_history_dir = history_dir or os.path.join(report_output, "history")
+        analyze_command += ["--history-dir", effective_history_dir]
+        logging.info("HTML report will be written to: %s", report_output)
 
     logging.info("Executing analyzer command: %s", " ".join(analyze_command))
     result = subprocess.run(analyze_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
@@ -310,16 +323,17 @@ def build_solution(repo_path, solution_path, custom_build_command=None):
 
     subprocess.run(clean_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
 
-def analyze_milestone(milestone_keywords = None):
-    """Analyze all milestone commits using Bumpy Road Analyzer."""
+def analyze_milestone(milestone_keywords=None, report_output_base=None):
+    """Analyze all milestone commits using Bumpy Road Analyzer.
+
+    When *report_output_base* is provided each project's HTML report is
+    generated (or updated) incrementally at
+    <report_output_base>/project_<project_id>/ using the .NET
+    HtmlReportGenerator.  Running this for successive milestones appends a
+    new history entry each time so the final report shows a trend across all
+    milestone commits.
+    """
     print(f"🔍 Fetching commits for milestone: {milestone_keywords}")
-    # try:
-    #      with open("commit_data.json", "r") as file:
-    #         commit_data = json.load(file)
-    # except (FileNotFoundError):
-    #     get_milestone_commits(milestone_keywords)
-    #     with open("commit_data.json", "r") as file:
-    #         commit_data = json.load(file)
     commit_data = get_milestone_commits(milestone_keywords)
 
     # load processed commits state
@@ -346,7 +360,16 @@ def analyze_milestone(milestone_keywords = None):
                 continue
 
             checkout_commit(repo_path, commit_id)
-            analysis_result = run_analyzers(repo_path)
+
+            # Derive per-project HTML report directory when a base is provided.
+            # Each milestone run appends a history entry so the report accumulates
+            # across all milestones automatically.
+            project_report_dir = (
+                os.path.join(report_output_base, f"project_{project_id}")
+                if report_output_base else None
+            )
+
+            analysis_result = run_analyzers(repo_path, report_output=project_report_dir)
 
             if analysis_result:
                 lines_of_code = calculate_lines_of_code(repo_path)
@@ -380,7 +403,16 @@ def analyze_milestone(milestone_keywords = None):
     return results
 
 def analyze_all_milestones():
-    """Analyze all milestone commits dynamically."""
+    """Analyze all milestone commits dynamically.
+
+    For each milestone, per-project JSON results are saved and the .NET
+    HtmlReportGenerator is invoked with --report-output so that each project
+    accumulates a history entry per milestone commit.  After all milestones
+    have run, every project directory under <out_dir>/project_<id>/ contains
+    a self-contained multi-page HTML report (index.html, summary.html,
+    history.html, project_*.html) whose history page shows the trend across
+    all milestone commits.
+    """
     # Decide on output directory. REPORT_OUTPUT may be a file path or directory.
     out_path = REPORT_OUTPUT
     out_dir = out_path if os.path.isdir(out_path) else os.path.dirname(out_path) or "."
@@ -389,7 +421,7 @@ def analyze_all_milestones():
     per_milestone_files = []
     ind = 1
     for milestone in MILESTONES:
-        milestone_results = analyze_milestone(milestone)
+        milestone_results = analyze_milestone(milestone, report_output_base=out_dir)
         fname = os.path.join(out_dir, f"analysis_results_{ind}.json")
         try:
             with open(fname, "w", encoding="utf-8") as f:
@@ -400,70 +432,27 @@ def analyze_all_milestones():
             logging.warning("Could not write milestone results to %s: %s", fname, e)
         ind += 1
 
-    # Generate per-project HTML reports by filtering per-milestone JSONs
-    try:
-        from bulk_analyzer import html_report_generator as hrg  # type: ignore
-        html_available = True
-    except Exception:
-        html_available = False
-
-    # Collect all project ids seen across milestone files
-    all_projects = set()
-    for mf in per_milestone_files:
-        try:
-            with open(mf, "r", encoding="utf-8") as fh:
-                payload = json.load(fh) or {}
-            for k in payload.keys():
-                all_projects.add(str(k))
-        except Exception:
-            continue
-
     if not per_milestone_files:
         print("No milestone result files produced; nothing to report.")
         return
 
-    tmp_base = os.path.join(out_dir, "_tmp_inputs")
-    os.makedirs(tmp_base, exist_ok=True)
-
-    for project_id in sorted(all_projects):
-        # create per-project input files
-        project_inputs = []
-        for idx, mf in enumerate(per_milestone_files, start=1):
-            try:
-                with open(mf, "r", encoding="utf-8") as fh:
-                    payload = json.load(fh) or {}
-                if project_id in payload:
-                    single = {project_id: payload[project_id]}
-                    tmpf = os.path.join(tmp_base, f"proj_{project_id}_m{idx}.json")
-                    with open(tmpf, "w", encoding="utf-8") as tf:
-                        json.dump(single, tf, indent=2)
-                    project_inputs.append(tmpf)
-            except Exception:
-                continue
-
-        if not project_inputs:
+    # Summarise where reports were written
+    seen_projects = set()
+    for mf in per_milestone_files:
+        try:
+            with open(mf, "r", encoding="utf-8") as fh:
+                payload = json.load(fh) or {}
+            seen_projects.update(str(k) for k in payload)
+        except Exception:
             continue
 
-        # generate HTML using the module if available; otherwise call module as script
-        out_html = os.path.join(out_dir, f"project_{project_id}_milestones.html")
-        if html_available:
-            try:
-                hrg_main = getattr(hrg, "parse_args", None)
-            except Exception:
-                hrg_main = None
-        # prefer subprocess call for isolation
-        try:
-            cmd = [sys.executable, "-m", "bulk_analyzer.html_report_generator", "--output", out_html, "--inputs"] + project_inputs
-            subprocess.run(cmd, check=True)
-            print(f"Generated HTML report for project {project_id}: {out_html}")
-        except Exception as e:
-            logging.warning("Failed to generate HTML for project %s: %s", project_id, e)
-
-    # cleanup temporary inputs
-    try:
-        shutil.rmtree(tmp_base, ignore_errors=True)
-    except Exception:
-        pass
+    for project_id in sorted(seen_projects):
+        report_dir = os.path.join(out_dir, f"project_{project_id}")
+        index_html = os.path.join(report_dir, "index.html")
+        if os.path.isfile(index_html):
+            print(f"📄 HTML report for project {project_id}: {index_html}")
+        else:
+            logging.warning("Expected HTML report not found for project %s at %s", project_id, report_dir)
 
 def find_solution_file(repo_path):
     """Recursively searches for a .sln file in the given repository directory."""
@@ -471,61 +460,177 @@ def find_solution_file(repo_path):
         for file in files:
             if file.endswith(".sln") or file.endswith(".slnx"):
                 return os.path.join(root, file)
-            
+
     # Check if it's a Unity project
     unity_project_settings = os.path.join(repo_path, "ProjectSettings", "ProjectVersion.txt")
     if os.path.exists(unity_project_settings):
-        if (not UNITY_PATH):
-            print("🎮 Detected Unity project. Unity is not configured, skipping...")
-            return None
         print("🎮 Detected Unity project. Generating solution file...")
-        generate_unity_solution(repo_path)
-        
-        # Search again for the generated solution
-        for root, _, files in os.walk(repo_path):
-            for file in files:
-                if file.endswith(".sln"):
-                    return os.path.join(root, file)
-    
+        sln_path = generate_unity_solution(repo_path)
+        if sln_path and os.path.isfile(sln_path):
+            return sln_path
+
     return None  # No solution file found
 
-def generate_unity_solution(repo_path):
-    """Uses Unity to generate a Visual Studio solution."""
-    update_unity_project_version(repo_path)
-    command = [
-        UNITY_PATH, "-batchmode", "-quit", "-nographics", "-projectPath", repo_path, "-executeMethod", "UnityEditor.SyncVS.SyncSolution"
+
+def _collect_unity_assemblies(repo_path):
+    """
+    Scans repo_path/Assets for .asmdef files and .cs files.
+
+    Returns a dict:  assembly_name -> {"dir": abs_directory, "files": [abs_cs_paths]}
+
+    Files that are not underneath any .asmdef directory are grouped into
+    "Assembly-CSharp" placed at repo_path.
+    """
+    assets_dir = os.path.join(repo_path, "Assets")
+    if not os.path.isdir(assets_dir):
+        return {}
+
+    # Map each asmdef directory to the assembly name declared inside the file.
+    asmdef_dirs = {}  # abs_dir -> assembly_name
+    for root, _, files in os.walk(assets_dir):
+        for fname in files:
+            if not fname.endswith(".asmdef"):
+                continue
+            asmdef_path = os.path.join(root, fname)
+            try:
+                with open(asmdef_path, "r", encoding="utf-8") as fh:
+                    data = json.loads(fh.read())
+                name = data.get("name") or os.path.splitext(fname)[0]
+            except Exception:
+                name = os.path.splitext(fname)[0]
+            asmdef_dirs[root] = name
+
+    def _get_asm(cs_abs):
+        """Return (assembly_name, asmdef_dir) for a given .cs file path."""
+        best_dir, best_len = None, -1
+        for adir in asmdef_dirs:
+            if cs_abs.startswith(adir + os.sep):
+                if len(adir) > best_len:
+                    best_dir, best_len = adir, len(adir)
+        if best_dir:
+            return asmdef_dirs[best_dir], best_dir
+        return "Assembly-CSharp", repo_path
+
+    assemblies = {}
+    for root, dirs, files in os.walk(assets_dir):
+        dirs[:] = [d for d in dirs if d not in ("Library", "Temp", "Logs")]
+        for fname in files:
+            if not fname.endswith(".cs"):
+                continue
+            cs_abs = os.path.join(root, fname)
+            name, asm_dir = _get_asm(cs_abs)
+            if name not in assemblies:
+                assemblies[name] = {"dir": asm_dir, "files": []}
+            assemblies[name]["files"].append(cs_abs)
+
+    return assemblies
+
+
+def _build_unity_csproj(assembly_name, cs_files, output_dir):
+    """
+    Writes an SDK-style .csproj for a single Unity assembly.
+    Uses NoWarn to suppress missing-Unity-reference diagnostics.
+    Returns the path to the written .csproj file.
+    """
+    items = "\n    ".join(
+        f'<Compile Include="{os.path.relpath(f, output_dir).replace(os.sep, "/")}" />'
+        for f in sorted(cs_files)
+    )
+    csproj_content = (
+        '<Project Sdk="Microsoft.NET.Sdk">\n'
+        "  <PropertyGroup>\n"
+        "    <TargetFramework>netstandard2.1</TargetFramework>\n"
+        "    <LangVersion>9.0</LangVersion>\n"
+        "    <Nullable>enable</Nullable>\n"
+        "    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>\n"
+        "    <!-- Suppress missing-Unity-assembly warnings -->\n"
+        "    <NoWarn>CS0012;CS0246;CS0436;CS1701;CS1702</NoWarn>\n"
+        "  </PropertyGroup>\n"
+        "  <ItemGroup>\n"
+        '    <Compile Remove="**/*.cs" />\n'
+        f"    {items}\n"
+        "  </ItemGroup>\n"
+        "</Project>\n"
+    )
+    csproj_path = os.path.join(output_dir, f"{assembly_name}.csproj")
+    with open(csproj_path, "w", encoding="utf-8") as fh:
+        fh.write(csproj_content)
+    return csproj_path
+
+
+def _build_unity_sln(repo_path, csproj_paths):
+    """
+    Writes a minimal Visual Studio .sln referencing all supplied .csproj paths.
+    Returns the path to the written .sln file.
+    """
+    CS_PROJECT_TYPE = "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
+
+    project_blocks = []
+    config_entries = []
+    for csproj_path in csproj_paths:
+        name = os.path.splitext(os.path.basename(csproj_path))[0]
+        rel  = os.path.relpath(csproj_path, repo_path).replace(os.sep, "\\")
+        guid = "{" + str(uuid.uuid4()).upper() + "}"
+        project_blocks.append(
+            f'Project("{CS_PROJECT_TYPE}") = "{name}", "{rel}", "{guid}"\nEndProject'
+        )
+        for cfg in ("Debug|Any CPU", "Release|Any CPU"):
+            config_entries.append(f"\t\t{guid}.{cfg}.ActiveCfg = {cfg}")
+            config_entries.append(f"\t\t{guid}.{cfg}.Build.0 = {cfg}")
+
+    sln_lines = [
+        "",
+        "Microsoft Visual Studio Solution File, Format Version 12.00",
+        "# Visual Studio Version 17",
+        "VisualStudioVersion = 17.0.31903.59",
+        "MinimumVisualStudioVersion = 10.0.40219.1",
+        *project_blocks,
+        "Global",
+        "\tGlobalSection(SolutionConfigurationPlatforms) = preSolution",
+        "\t\tDebug|Any CPU = Debug|Any CPU",
+        "\t\tRelease|Any CPU = Release|Any CPU",
+        "\tEndGlobalSection",
+        "\tGlobalSection(ProjectConfigurationPlatforms) = postSolution",
+        *config_entries,
+        "\tEndGlobalSection",
+        "EndGlobal",
     ]
-    try:
-        subprocess.run(command, check=True)
-        print("✅ Unity solution file generated.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error generating Unity solution: {e}")
+    sln_path = os.path.join(repo_path, "GeneratedUnity.sln")
+    with open(sln_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(sln_lines) + "\n")
+    return sln_path
 
-def update_unity_project_version(project_path):
-    version_file = os.path.join(project_path, "ProjectSettings", "ProjectVersion.txt")
 
-    if not os.path.isfile(version_file):
-        print(f"[ERROR] Couldn't find ProjectVersion.txt at: {version_file}")
-        return
+def generate_unity_solution(repo_path):
+    """
+    Generates a Visual Studio .sln and per-assembly .csproj files for a Unity
+    project without requiring the Unity editor or a Unity license.
 
-    lines = []
-    found = False
+    Reads Assets/ structure and .asmdef files to produce one SDK-style .csproj
+    per assembly (plus a catch-all "Assembly-CSharp" project for any .cs files
+    not covered by a .asmdef).  A single .sln at repo_path ties them together.
 
-    with open(version_file, "r") as f:
-        for line in f:
-            if line.startswith("m_EditorVersion:"):
-                lines.append(f"m_EditorVersion: {UNITY_VERSION}\n")
-                found = True
-            else:
-                lines.append(line)
+    Returns the path to the generated .sln, or None if no .cs files were found.
+    """
+    assemblies = _collect_unity_assemblies(repo_path)
+    if not assemblies:
+        logging.warning(
+            "No .cs files found under Assets/ in %s — skipping Unity solution generation.",
+            repo_path,
+        )
+        return None
 
-    if not found:
-        lines.append(f"m_EditorVersion: {UNITY_VERSION}\n")
+    csproj_paths = []
+    for asm_name, info in assemblies.items():
+        output_dir = info["dir"]
+        os.makedirs(output_dir, exist_ok=True)
+        csproj_path = _build_unity_csproj(asm_name, info["files"], output_dir)
+        csproj_paths.append(csproj_path)
+        logging.info("Generated %s (%d file(s))", csproj_path, len(info["files"]))
 
-    with open(version_file, "w") as f:
-        f.writelines(lines)
-
-    print(f"[OK] Updated Unity version to {UNITY_VERSION}")
+    sln_path = _build_unity_sln(repo_path, csproj_paths)
+    print(f"✅ Unity solution generated: {sln_path} ({len(csproj_paths)} project(s))")
+    return sln_path
 
 
 def _parse_args():

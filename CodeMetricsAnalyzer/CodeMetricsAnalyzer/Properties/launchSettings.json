@@ -2,7 +2,7 @@
   "profiles": {
     "CodeMetricsAnalyzer": {
       "commandName": "Project",
-      "commandLineArgs": "analyze \"C:\\Users\\User\\Documents\\git_projects\\szofttech_tmp\\place\\MiniTransportTycoon\\MiniTransportTycoon.sln\" --output output.xml --report-output \"C:\\Users\\User\\Documents\\git_projects\\szofttech_tmp\\place\\MiniTransportTycoon\\report\" --msbuild-path \"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\MSBuild\\Current\\Bin\""
+      "commandLineArgs": "analyze \"C:\\Users\\User\\Documents\\git_projects\\szofttech_tmp\\hungabunga\\TransportTycon.sln\" --output output.xml --report-output \"C:\\Users\\User\\Documents\\git_projects\\szofttech_tmp\\hungabunga\\report\" --msbuild-path \"C:\\Program Files\\Microsoft Visual Studio\\18\\Enterprise\\MSBuild\\Current\\Bin\""
     }
   }
 }
