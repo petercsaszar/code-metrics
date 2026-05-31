@@ -18,7 +18,7 @@
 # using pure Python (no Unity editor or license required).
 
 # ─── Stage 1: build and publish the .NET CodeMetricsAnalyzer ─────────────────
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY CodeMetricsAnalyzer/ ./CodeMetricsAnalyzer/
@@ -28,7 +28,7 @@ RUN dotnet restore CodeMetricsAnalyzer/CodeMetricsAnalyzer.sln \
         -c Release -o /app/publish --no-restore
 
 # ─── Stage 2: .NET SDK + Python runtime ──────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:8.0
+FROM mcr.microsoft.com/dotnet/sdk:10.0
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install Python, cloc, git, curl, and ca-certificates
@@ -72,6 +72,7 @@ COPY bulk_analyzer/config.example.yml /opt/bulk_analyzer/config.yml
 
 # Copy the entrypoint script
 COPY docker/entrypoint.sh /opt/entrypoint.sh
+RUN sed -i 's/\r$//' /opt/entrypoint.sh
 RUN chmod +x /opt/entrypoint.sh
 
 WORKDIR /opt/bulk_analyzer
@@ -113,4 +114,4 @@ ENV ANALYZER_CONFIG=/tmp/runtime-config.yml
 ENV CONFIG_PATH=/tmp/runtime-config.yml
 
 # Entrypoint merges config.yml defaults with env-var overrides, then runs analyzer.py
-ENTRYPOINT ["/opt/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/opt/entrypoint.sh"]
