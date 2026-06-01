@@ -34,6 +34,23 @@ if [ -z "${GITLAB_TOKEN:-}" ]; then
     exit 1
 fi
 
+# ── Set up log file in the reports directory ──────────────────────────────────
+REPORT_OUTPUT="${REPORT_OUTPUT:-/app/reports}"
+mkdir -p "${REPORT_OUTPUT}"
+LOG_FILE="${REPORT_OUTPUT}/run_$(date +%Y%m%d_%H%M%S).log"
+exec > >(tee "${LOG_FILE}") 2>&1
+echo "[INFO]  Log file      : ${LOG_FILE}"
+
+# Optional: Unity license file path (mount file into container and set this env var)
+if [ -n "${UNITY_LICENSE_PATH:-}" ]; then
+    if [ -f "${UNITY_LICENSE_PATH}" ]; then
+        echo "[INFO]  Unity license : ${UNITY_LICENSE_PATH}"
+        export UNITY_LICENSE_PATH
+    else
+        echo "[WARN]  UNITY_LICENSE_PATH is set but file not found: ${UNITY_LICENSE_PATH}"
+    fi
+fi
+
 # ── Generate runtime config by merging config.yml + env vars ─────────────────
 python3 - <<'PYEOF'
 import json, os, sys, yaml

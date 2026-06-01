@@ -79,3 +79,45 @@ review diagnostics and the commit-history trend across all analysed milestones.
 > **Note:** Unity projects are detected automatically.  A Visual Studio solution
 > is generated from the `Assets/` directory using pure Python — no Unity editor
 > or license is required.
+
+## Using a local Unity license (preferred for editor sync)
+
+If you want the analyzer to use the Unity Editor to sync/generate the `.sln`,
+export a Unity license file from a local machine where Unity/Hub is installed
+and mount it into the container. This avoids storing credentials in CI and is
+the recommended approach for automation.
+
+1. Create a manual activation request (`.alf`) on the machine with Unity Hub:
+
+```bash
+# adjust path to your Unity editor binary and project path
+/path/to/Unity -batchmode -nographics -createManualActivationFile \
+  -logFile ./unity_alf.log -quit -projectPath /path/to/some/project
+```
+
+2. Upload the produced `.alf` at https://license.unity3d.com/manual and
+   download the returned license file (`.ulf`).
+
+3. Run the analyzer container mounting the `.ulf` and enabling editor sync:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/reports:/app/reports" \
+  -v /host/path/unity.ulf:/run/secrets/unity.ulf:ro \
+  -v /host/path/repo:/tmp/repos/123:ro \
+  -e UNITY_LICENSE_PATH=/run/secrets/unity.ulf \
+  -e UNITY_SYNC_WITH_EDITOR=1 \
+  -e GITLAB_TOKEN=glpat-... \
+  -e GITLAB_URL=https://gitlab.example.com \
+  -e GITLAB_GROUP_ID=42 \
+  code-metrics-analyzer
+```
+
+Notes:
+- The analyzer will call Unity with `-manualLicenseFile <UNITY_LICENSE_PATH>` to
+  activate and then run `Unity -batchmode -nographics -projectPath <PROJECT>
+  -executeMethod UnityEditor.SyncVS.SyncSolution -logFile - -quit` to produce
+  the editor-generated solution. If that fails the Python generator is used as
+  a fallback.
+- Keep the `.ulf` secure; mount it read-only and do not commit it to source
+  control.

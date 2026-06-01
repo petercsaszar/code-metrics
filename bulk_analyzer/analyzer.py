@@ -238,6 +238,16 @@ def run_analyzers(repo_path, solution_path=None, custom_build_command=None,
     except subprocess.CalledProcessError as e:
         logging.warning("Build error, trying analyzers anyway: %s", e)
 
+    # If this repository contains a Unity project and the operator requested
+    # building with the Unity editor, attempt a Unity CLI build (license
+    # activation is handled if UNITY_LICENSE_PATH is provided).
+    try:
+        unity_root = _find_unity_project_root(repo_path)
+        if unity_root:
+            _run_unity_cli_build(repo_path, unity_root)
+    except Exception as e:
+        logging.warning("Unity build step failed: %s", e)
+
     # Prefer running from the project file if available; otherwise try the bundled published dll in the image
     if os.path.exists(project_path):
         analyze_command = [
@@ -314,12 +324,13 @@ def build_solution(repo_path, solution_path, custom_build_command=None):
 
     if (custom_build_command is None):
         build_command = [
-        "dotnet", "build", solution_path
+            "dotnet", "build", solution_path,
+            "-p:EnableWindowsTargeting=true",
         ]
-        subprocess.run(build_command, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
+        subprocess.run(build_command, check=True, encoding="utf-8", errors="replace")
     else:
         build_command = f"cd {repo_path} && {custom_build_command}"
-        subprocess.run(build_command, capture_output=True, text=True, check=True, shell=True, encoding="utf-8", errors="replace")
+        subprocess.run(build_command, check=True, shell=True, encoding="utf-8", errors="replace")
 
     subprocess.run(clean_command, capture_output=True, text=True, check=False, encoding="utf-8", errors="replace")
 
@@ -454,22 +465,174 @@ def analyze_all_milestones():
         else:
             logging.warning("Expected HTML report not found for project %s at %s", project_id, report_dir)
 
+def _find_unity_project_root(repo_path):
+    """Walk repo_path looking for ProjectSettings/ProjectVersion.txt at any depth.
+
+    Returns the directory that contains ProjectSettings/, or None if not found.
+    The Unity project may live in a subdirectory (e.g. TransportTycoon/) rather
+    than at the repo root, so a single os.path.exists check on the root is not
+    sufficient.
+    """
+    for root, dirs, files in os.walk(repo_path):
+        dirs[:] = [d for d in dirs if d not in (".git", "Library", "Temp", "Logs")]
+        if os.path.basename(root) == "ProjectSettings" and "ProjectVersion.txt" in files:
+            return os.path.dirname(root)
+    return None
+
+
 def find_solution_file(repo_path):
     """Recursively searches for a .sln file in the given repository directory."""
+    # Unity projects often commit a .slnx/.sln that references editor-generated
+    # .csproj files which are not in the repo. Always use the generated solution
+    # for Unity projects so the build doesn't fail with MSB3202.
+    # Search recursively because the Unity project may live in a subdirectory.
+    unity_project_root = _find_unity_project_root(repo_path)
+    if unity_project_root:
+        print("🎮 Detected Unity project.")
+        # If possible, prefer to ask the Unity editor to sync the solution so
+        # the .sln matches what Unity would generate. This is enabled when the
+        # operator sets UNITY_SYNC_WITH_EDITOR or UNITY_BUILD_WITH_EDITOR.
+        try:
+            use_editor_sync = bool(os.environ.get("UNITY_SYNC_WITH_EDITOR") or os.environ.get("UNITY_BUILD_WITH_EDITOR"))
+            unity_exec = _find_unity_executable()
+            if use_editor_sync and unity_exec:
+                logging.info("Attempting to sync Unity solution via editor: %s", unity_exec)
+                # Activate license first if provided
+                license_path = os.environ.get("UNITY_LICENSE_PATH")
+                if license_path and os.path.isfile(license_path):
+                    try:
+                        act_cmd = [unity_exec, "-batchmode", "-nographics", "-manualLicenseFile", license_path, "-quit"]
+                        logging.info("Activating Unity license before sync: %s", " ".join(act_cmd))
+                        subprocess.run(act_cmd, check=True, cwd=unity_project_root)
+                    except subprocess.CalledProcessError as e:
+                        logging.warning("Unity license activation failed: %s", e)
+
+                sync_cmd = [
+                    unity_exec,
+                    "-batchmode",
+                    "-nographics",
+                    "-projectPath",
+                    unity_project_root,
+                    "-executeMethod",
+                    "UnityEditor.SyncVS.SyncSolution",
+                    "-logFile",
+                    "-",
+                    "-quit",
+                ]
+                try:
+                    res = subprocess.run(sync_cmd, check=False, capture_output=True, text=True, cwd=unity_project_root)
+                    logging.debug("Unity sync stdout:\n%s", res.stdout)
+                    logging.debug("Unity sync stderr:\n%s", res.stderr)
+                    if res.returncode == 0:
+                        # Unity writes the .sln into the project root — search for it now
+                        for root, _, files in os.walk(unity_project_root):
+                            for f in files:
+                                if f.endswith('.sln') or f.endswith('.slnx'):
+                                    sln_file = os.path.join(root, f)
+                                    logging.info("Unity editor sync produced solution: %s", sln_file)
+                                    return sln_file
+                    else:
+                        logging.warning("Unity editor sync returned %s; falling back to Python generator", res.returncode)
+                except Exception as e:
+                    logging.warning("Unity editor sync failed: %s; falling back to Python generator", e)
+        except Exception as e:
+            logging.warning("Unity sync attempt encountered error: %s", e)
+
+        # Fall back to the pure-Python solution generator if editor sync was
+        # not requested, not available, or failed.
+        print("Generating solution file using pure-Python generator...")
+        sln_path = generate_unity_solution(unity_project_root)
+        if sln_path and os.path.isfile(sln_path):
+            logging.info("Pure-Python Unity solution generator produced: %s", sln_path)
+            return sln_path
+
     for root, _, files in os.walk(repo_path):
         for file in files:
             if file.endswith(".sln") or file.endswith(".slnx"):
                 return os.path.join(root, file)
 
-    # Check if it's a Unity project
-    unity_project_settings = os.path.join(repo_path, "ProjectSettings", "ProjectVersion.txt")
-    if os.path.exists(unity_project_settings):
-        print("🎮 Detected Unity project. Generating solution file...")
-        sln_path = generate_unity_solution(repo_path)
-        if sln_path and os.path.isfile(sln_path):
-            return sln_path
-
     return None  # No solution file found
+
+
+def _find_unity_executable():
+    """Return the path to a Unity editor executable, or None if not found."""
+    # Allow override from environment
+    explicit = os.environ.get("UNITY_EXECUTABLE_PATH")
+    if explicit and os.path.isfile(explicit) and os.access(explicit, os.X_OK):
+        return explicit
+
+    candidates = [
+        "unity",
+        "unity-editor",
+        "/opt/Unity/Editor/Unity",
+        "/usr/bin/unity",
+        "/usr/bin/unity-editor",
+    ]
+    for c in candidates:
+        path = shutil.which(c) or c
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def _run_unity_cli_build(repo_path, unity_project_root):
+    """Optionally activate a license and run Unity Editor CLI to build the project.
+
+    Controlled by env var `UNITY_BUILD_WITH_EDITOR` (truthy values enable).
+    Other env vars:
+      - UNITY_LICENSE_PATH: path inside the container to a .ulf license file
+      - UNITY_BUILD_TARGET: e.g. StandaloneLinux64 (default)
+      - UNITY_EXECUTABLE_PATH: explicit path to the Unity binary
+    """
+    if not os.environ.get("UNITY_BUILD_WITH_EDITOR"):
+        return None
+
+    unity_exec = _find_unity_executable()
+    if not unity_exec:
+        logging.warning("UNITY_BUILD_WITH_EDITOR requested but no Unity executable found in PATH or UNITY_EXECUTABLE_PATH")
+        return None
+
+    build_target = os.environ.get("UNITY_BUILD_TARGET", "StandaloneLinux64")
+    unity_license = os.environ.get("UNITY_LICENSE_PATH")
+
+    # Activate license if provided
+    if unity_license:
+        if os.path.isfile(unity_license):
+            act_cmd = [unity_exec, "-batchmode", "-nographics", "-manualLicenseFile", unity_license, "-quit"]
+            logging.info("Activating Unity license via: %s", " ".join(act_cmd))
+            try:
+                subprocess.run(act_cmd, check=True, cwd=unity_project_root)
+            except subprocess.CalledProcessError as e:
+                logging.warning("Unity license activation failed: %s", e)
+        else:
+            logging.warning("UNITY_LICENSE_PATH is set but file not found: %s", unity_license)
+
+    # Run a generic build. Note: many projects require a custom build method;
+    # this attempts a best-effort using Unity's CLI buildTarget switch.
+    build_cmd = [
+        unity_exec,
+        "-batchmode",
+        "-nographics",
+        "-projectPath",
+        unity_project_root,
+        "-buildTarget",
+        build_target,
+        "-quit",
+        "-logFile",
+        "-",
+    ]
+    logging.info("Running Unity CLI build: %s", " ".join(build_cmd))
+    try:
+        result = subprocess.run(build_cmd, check=False, capture_output=True, text=True, cwd=unity_project_root)
+        logging.debug("Unity build stdout:\n%s", result.stdout)
+        logging.debug("Unity build stderr:\n%s", result.stderr)
+        if result.returncode != 0:
+            logging.warning("Unity CLI build exited with code %s", result.returncode)
+        else:
+            logging.info("Unity CLI build completed successfully for project: %s", unity_project_root)
+    except Exception as e:
+        logging.warning("Unity CLI build invocation failed: %s", e)
+
 
 
 def _collect_unity_assemblies(repo_path):
