@@ -210,6 +210,9 @@ namespace CodeMetricsAnalyzer.Commands.Analyze
                 ["WarningsAsErrors"] = "",
                 ["WarningsNotAsErrors"] = "NU1902;NU1903",
                 ["NoWarn"] = "NU1902;NU1903",
+
+                // Allow MSBuildWorkspace to open net*-windows TFM projects on Linux
+                ["EnableWindowsTargeting"] = "true",
             };
 
             Environment.SetEnvironmentVariable("DOTNET_ROLL_FORWARD", "latestMajor");
