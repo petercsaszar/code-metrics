@@ -71,7 +71,10 @@ dotnet build CodeMetricsAnalyzer/CodeMetricsAnalyzer
 
 # 2. Set up the Python environment
 python -m venv .venv
-.venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
+# Linux/macOS:
+source .venv/bin/activate
+# Windows (PowerShell):
+.\.venv\Scripts\Activate.ps1
 pip install -r bulk_analyzer/requirements.txt
 
 # 3. Configure
