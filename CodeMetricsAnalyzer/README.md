@@ -1,10 +1,24 @@
 # Metrics analyzer and report generator
 
+.NET/Roslyn solution that statically analyzes C# solutions for code-quality
+metrics and produces XML + HTML reports. See [`../docs/QUICKSTART.md`](../docs/QUICKSTART.md)
+for CLI usage, configuration, and CI integration examples.
+
+## Projects in this solution
+- `CodeMetricsAnalyzer.Analyzers` – the Roslyn diagnostic analyzers and their configuration
+- `CodeMetricsAnalyzer.Commands` – the `analyze` CLI command implementation
+- `CodeMetricsAnalyzer.ResultExporter` – XML export and HTML report generation
+- `CodeMetricsAnalyzer` – the CLI entry point, packaged as the `CodeMetricsAnalyzer` dotnet tool
+- `CodeMetricsAnalyzer.Analyzers.Tests` – unit tests for the analyzers
+
 ## Currently implemented metrics
-- Bumpy Road Code Smell
-- Function parameter count
-- LCOM4 metrics
-- LCOM5 metrics
+- CMA0001 – Bumpy Road Code Smell
+- CMA0002 – Function parameter count
+- CMA0003 – LCOM4 (Lack of Cohesion of Methods)
+- CMA0004 – LCOM5
+- CMA0005 – Maintainability Index
+- CMA0006 – Cyclomatic Complexity
+- CMA0007 – Class Coupling
 
 ## Features in the HTML Report
 

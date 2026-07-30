@@ -1,35 +1,54 @@
-# Automated analysis of software metrics and complexity in student projects using static analysis
+# Code Metrics
 
-A tool for downloading gitlab projects from groups, finding milestones and then compute, visualize and compare different code metrics on them.
+Automated analysis of software metrics and complexity in student and
+open-source C# projects using static analysis.
+
+It downloads GitLab projects (by group/subgroup), locates milestone commits
+(or, optionally, just the latest commit on each default branch), runs a
+custom Roslyn-based static analyzer over each one, and produces JSON metrics
+plus browsable HTML reports with trend charts across commits.
 
 ## Currently implemented metrics
-- Bumpy Road Code Smell
-- Functional parameter count
-- LCOM4 metrics
-- LCOM5 metrics
-- Cyclomatic complexity
-- Maintainability index
-- Class coupling
 
-## Usage
-See the subfolders:
+| ID | Metric |
+|----|--------|
+| CMA0001 | Bumpy Road Code Smell (excessive statement nesting) |
+| CMA0002 | Function parameter count |
+| CMA0003 | LCOM4 (Lack of Cohesion of Methods) |
+| CMA0004 | LCOM5 |
+| CMA0005 | Maintainability Index |
+| CMA0006 | Cyclomatic Complexity |
+| CMA0007 | Class Coupling |
 
-- Code Metrics Analyzer: `CodeMetricsAnalyzer/`
-- Automated git downloader and analyzer: `bulk_analyzer/`
+## Tech stack & architecture
 
-## Docker usage
+Two components, glued together by Docker:
 
-### Build
+- **[`CodeMetricsAnalyzer/`](CodeMetricsAnalyzer/)** — .NET 8 / Roslyn solution.
+  Analyzes a `.sln`/`.csproj` and emits diagnostics (CMA0001–CMA0007), then
+  exports XML and an HTML report with historical trend charts. Packaged as a
+  `dotnet tool` (`CodeMetricsAnalyzer` command).
+- **[`bulk_analyzer/`](bulk_analyzer/)** — Python package. Talks to the
+  GitLab API to find student/public projects and milestone commits (fuzzy
+  matched by name), clones them, invokes `CodeMetricsAnalyzer` on each, and
+  aggregates results. Also supports Unity projects (generates a `.sln` for
+  the `Assets/` folder without needing the Unity editor).
+- **[`docker/`](docker/)** — bundles both of the above (plus MSBuild, cloc,
+  git, mono) into a turnkey image so analysis needs no local toolchain setup.
+
+```
+GitLab group/subgroup ──▶ bulk_analyzer (Python) ──▶ CodeMetricsAnalyzer (.NET/Roslyn) ──▶ JSON + HTML reports
+```
+
+## Getting started
+
+Pick one of two paths:
+
+### Docker (recommended, no local .NET/Python setup)
 
 ```bash
 docker build -f docker/Dockerfile -t code-metrics-analyzer .
-```
 
-### Analyze student projects
-
-**Minimal — only token, GitLab URL, group, and milestones required:**
-
-```bash
 docker run --rm \
   -v "$(pwd)/reports:/app/reports" \
   -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
@@ -38,86 +57,74 @@ docker run --rm \
   code-metrics-analyzer
 ```
 
-**Full example — all optional overrides included:**
+Open `reports/project_<id>/index.html` when it's done. Full options
+(milestones, Unity licensing, `ANALYSIS_MODE=latest_snapshot`, manual
+container invocation) are in [`docs/DOCKER_README.md`](docs/DOCKER_README.md).
+
+### From source (local development)
+
+Requirements: `python3`, `.NET SDK 8.0`, optionally `unity` and `cloc`.
 
 ```bash
-docker run --rm \
-  -v "$(pwd)/reports:/app/reports" \
-  -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
-  -e GITLAB_URL=https://gitlab.example.com \
-  -e GITLAB_GROUP_ID=42 \
-  -e GITLAB_SUBGROUP_ID=99 \
-  -e MILESTONE_1="Sprint 1,Sprint1" \
-  -e MILESTONE_2="Sprint 2,Sprint2" \
-  -e MILESTONE_3="Sprint 3" \
-  -e CLONE_DIR=/tmp/repos \
-  -e REPORT_OUTPUT=/app/reports \
-  code-metrics-analyzer
+# 1. Build the analyzer
+dotnet build CodeMetricsAnalyzer/CodeMetricsAnalyzer
+
+# 2. Set up the Python environment
+python -m venv .venv
+.venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
+pip install -r bulk_analyzer/requirements.txt
+
+# 3. Configure
+cp bulk_analyzer/config.example.yml bulk_analyzer/config.yml
+# edit config.yml: gitlab.url, gitlab.token, gitlab.group_id
+
+# 4. Run
+python -m bulk_analyzer.analyzer
 ```
 
-Milestones can alternatively be passed as a single JSON env var:
+See [`bulk_analyzer/README.md`](bulk_analyzer/README.md) for the full
+Windows/Linux walkthrough, public-project analysis, and the HTML report
+generator.
 
-```bash
--e MILESTONE_KEYWORDS='[["Sprint 1","Sprint1"],["Sprint 2","Sprint2"]]'
+## Usage cheat-sheet
+
+| Task | Command |
+|------|---------|
+| Analyze a solution directly (.NET tool) | `CodeMetricsAnalyzer analyze YourSolution.sln --report-output ./reports` |
+| Analyze GitLab group by milestones | `python -m bulk_analyzer.analyzer` |
+| Analyze latest commit on default branch | `python -m bulk_analyzer.latest_snapshot_analyzer --report-output ./reports` |
+| Analyze public/open-source repos | `python bulk_analyzer/public_project_analyzer.py` |
+| Generate standalone bulk HTML report | `python -m bulk_analyzer.html_report_generator` |
+| Build & run turnkey Docker image | `docker build -f docker/Dockerfile -t code-metrics-analyzer .` |
+| Run analyzer unit tests | `dotnet test CodeMetricsAnalyzer/CodeMetricsAnalyzer.sln` |
+
+Deeper references:
+- [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — CLI options, `appsettings.json` configuration, CI/CD examples (GitLab/GitHub/Azure)
+- [`docs/DOCKER_README.md`](docs/DOCKER_README.md) — Docker workflows, Unity licensing, environment variables
+- [`.gitlab-ci.example.yml`](.gitlab-ci.example.yml) — copy-paste GitLab CI pipeline template
+- [`CodeMetricsAnalyzer/README.md`](CodeMetricsAnalyzer/README.md) — analyzer solution layout
+- [`bulk_analyzer/README.md`](bulk_analyzer/README.md) — GitLab downloader/orchestrator details
+
+## Directory structure
+
+```
+code-metrics/
+├── CodeMetricsAnalyzer/            .NET/Roslyn solution
+│   ├── CodeMetricsAnalyzer/            CLI entry point (dotnet tool)
+│   ├── CodeMetricsAnalyzer.Analyzers/  Roslyn diagnostic analyzers + config
+│   ├── CodeMetricsAnalyzer.Commands/   `analyze` command implementation
+│   ├── CodeMetricsAnalyzer.ResultExporter/  XML/HTML report generation
+│   └── CodeMetricsAnalyzer.Analyzers.Tests/ Unit tests
+├── bulk_analyzer/                  Python package: GitLab downloader + orchestrator
+│   └── visualization/                  Jupyter notebooks for exploring results
+├── docker/                         Dockerfiles (Linux/Windows/dotnet) + entrypoint
+├── docs/                           Deep-dive human docs (quick start, Docker)
+├── .claude/                        AI agent memory (see .claude/CLAUDE.md)
+├── .gitlab-ci.example.yml          GitLab CI pipeline template
+├── LICENSE                         BSD-3-Clause
+└── README.md                       this file
 ```
 
-If you have a `config.yml` with defaults (GitLab URL, group ID, milestones, …)
-you can mount it and omit the corresponding env vars:
+## License
 
-```bash
-docker run --rm \
-  -v "$(pwd)/bulk_analyzer/config.yml:/opt/bulk_analyzer/config.yml" \
-  -v "$(pwd)/reports:/app/reports" \
-  -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
-  code-metrics-analyzer
-```
-
-After analysis each project's HTML report is written to
-`<REPORT_OUTPUT>/project_<id>/index.html`.  Open `index.html` in a browser to
-review diagnostics and the commit-history trend across all analysed milestones.
-
-> **Note:** Unity projects are detected automatically.  A Visual Studio solution
-> is generated from the `Assets/` directory using pure Python — no Unity editor
-> or license is required.
-
-## Using a local Unity license (preferred for editor sync)
-
-If you want the analyzer to use the Unity Editor to sync/generate the `.sln`,
-export a Unity license file from a local machine where Unity/Hub is installed
-and mount it into the container. This avoids storing credentials in CI and is
-the recommended approach for automation.
-
-1. Create a manual activation request (`.alf`) on the machine with Unity Hub:
-
-```bash
-# adjust path to your Unity editor binary and project path
-/path/to/Unity -batchmode -nographics -createManualActivationFile \
-  -logFile ./unity_alf.log -quit -projectPath /path/to/some/project
-```
-
-2. Upload the produced `.alf` at https://license.unity3d.com/manual and
-   download the returned license file (`.ulf`).
-
-3. Run the analyzer container mounting the `.ulf` and enabling editor sync:
-
-```bash
-docker run --rm \
-  -v "$(pwd)/reports:/app/reports" \
-  -v /host/path/unity.ulf:/run/secrets/unity.ulf:ro \
-  -v /host/path/repo:/tmp/repos/123:ro \
-  -e UNITY_LICENSE_PATH=/run/secrets/unity.ulf \
-  -e UNITY_SYNC_WITH_EDITOR=1 \
-  -e GITLAB_TOKEN=glpat-... \
-  -e GITLAB_URL=https://gitlab.example.com \
-  -e GITLAB_GROUP_ID=42 \
-  code-metrics-analyzer
-```
-
-Notes:
-- The analyzer will call Unity with `-manualLicenseFile <UNITY_LICENSE_PATH>` to
-  activate and then run `Unity -batchmode -nographics -projectPath <PROJECT>
-  -executeMethod UnityEditor.SyncVS.SyncSolution -logFile - -quit` to produce
-  the editor-generated solution. If that fails the Python generator is used as
-  a fallback.
-- Keep the `.ulf` secure; mount it read-only and do not commit it to source
-  control.
+BSD-3-Clause — see [`LICENSE`](LICENSE).

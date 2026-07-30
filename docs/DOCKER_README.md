@@ -205,6 +205,7 @@ analyzer:
 ## Environment Variables
 
 Inside the container:
+- `ANALYSIS_MODE` – `milestone` (default) analyzes each configured milestone commit via `bulk_analyzer.analyzer`; `latest_snapshot` instead checks out HEAD of each project's default branch via `bulk_analyzer.latest_snapshot_analyzer`, skipping milestone lookup entirely
 - `ANALYZER_CONFIG` – path to config.yml (default: `/opt/bulk_analyzer/config.yml`)
 - `REPORT_OUTPUT` – directory for JSON and HTML outputs (default: `analysis_results.json`)
 - `PROCESSED_COMMITS_PATH` – file to track analyzed commits (default: `processed_commits.json`)
@@ -212,6 +213,18 @@ Inside the container:
 - `UNITY_PATH` – path to Unity Editor executable (auto-detected from config.yml if set, or override at runtime)
 
 **Note**: The entrypoint script automatically reads `analyzer.unity_path` from config.yml and sets `UNITY_PATH` if not already set. You can still override by explicitly setting `-e UNITY_PATH=<path>`.
+
+Example — analyze the latest commit on each project's default branch instead of milestones:
+
+```bash
+docker run --rm \
+  -v "$(pwd)/reports:/app/reports" \
+  -e GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx \
+  -e GITLAB_URL=https://gitlab.example.com \
+  -e GITLAB_GROUP_ID=42 \
+  -e ANALYSIS_MODE=latest_snapshot \
+  code-metrics-analyzer
+```
 
 ## Features
 

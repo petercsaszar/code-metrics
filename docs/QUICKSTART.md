@@ -2,19 +2,23 @@
 
 ## Installation
 
-### As a Global Tool (Recommended for CI/CD)
+The tool is not currently published to a public NuGet feed — build and install it
+locally as a .NET global tool. The command you run *after* install is
+`CodeMetricsAnalyzer` (the `ToolCommandName`), but the package id used with
+`tool install` is `ELTE.FI.CodeMetricsAnalyzer`.
+
+### From Source (only supported path today)
 
 ```bash
-dotnet tool install --global CodeMetricsAnalyzer
+cd CodeMetricsAnalyzer/CodeMetricsAnalyzer
+dotnet pack --configuration Release
+dotnet tool install --global --add-source ./nupkg ELTE.FI.CodeMetricsAnalyzer
 ```
 
-### From Source
+### If you publish the package to a private/public feed
 
 ```bash
-cd CodeMetricsAnalyzer
-dotnet build --configuration Release
-dotnet pack --configuration Release
-dotnet tool install --global --add-source ./bin/Release CodeMetricsAnalyzer
+dotnet tool install --global ELTE.FI.CodeMetricsAnalyzer
 ```
 
 ## Basic Usage
@@ -77,47 +81,75 @@ CodeMetricsAnalyzer analyze YourSolution.sln \
 ## Supported Metrics
 
 ### CMA0001 - Bumpy Road Code Smell
-Detects excessive nesting in methods, making code harder to read.
+Detects excessive statement nesting in methods, making code harder to read.
 
-**Threshold**: Configurable in `appsettings.json`
+**Default Threshold**: `BumpynessThreshold` = 2
 
 ### CMA0002 - Function Parameter Count
 Flags methods with too many parameters.
 
-**Default Threshold**: 7 parameters
+**Default Threshold**: `ParameterCountThreshold` = 4
 
 ### CMA0003 - LCOM4 (Lack of Cohesion of Methods)
-Measures class cohesion based on method interactions.
+Measures class cohesion based on method/field interactions.
 
-**Default Threshold**: 3 components
+**Default Threshold**: `CohesionThreshold` = 4 components
 
 ### CMA0004 - LCOM5
-Alternative cohesion metric focusing on field usage.
+Alternative cohesion metric focusing on member usage.
 
-**Default Threshold**: Configurable
+**Default Threshold**: `CohesionThreshold` = 0.5
+
+### CMA0005 - Maintainability Index
+Flags methods with a low maintainability index.
+
+**Default Threshold**: `MinimumMaintainabilityIndex` = 65
+
+### CMA0006 - Cyclomatic Complexity
+Flags methods with high cyclomatic complexity.
+
+**Default Threshold**: `MaximumComplexity` = 6
+
+### CMA0007 - Class Coupling
+Flags types that depend on too many other types.
+
+**Default Threshold**: `MaximumClassCoupling` = 15
+
+All diagnostics are enabled by default; there is currently no per-analyzer
+on/off switch, only threshold tuning via `appsettings.json`.
 
 ## Configuration
 
-Create or modify `appsettings.json` in the analyzer directory:
+Create or modify `appsettings.json` next to the analyzer executable (see
+[`CodeMetricsAnalyzer/CodeMetricsAnalyzer/appsettings.json`](../CodeMetricsAnalyzer/CodeMetricsAnalyzer/appsettings.json)
+for the shipped defaults):
 
 ```json
 {
   "BumpyRoadAnalysis": {
-    "NestingThreshold": 3,
-    "Enabled": true
+    "BumpynessThreshold": 2
   },
   "FunctionParameterCountAnalysis": {
-    "ParameterCountThreshold": 7,
-    "Enabled": true
+    "ParameterCountThreshold": 4
   },
   "LCOM4Analysis": {
-    "CohesionThreshold": 3,
-    "MinimumMethodCount": 3,
-    "MinimumFieldCount": 2,
-    "Enabled": true
+    "CohesionThreshold": 4,
+    "MinimumMethodCount": 2,
+    "MinimumFieldCount": 1
   },
   "LCOM5Analysis": {
-    "Enabled": true
+    "CohesionThreshold": 0.5,
+    "MinimumMethodCount": 2,
+    "MinimumFieldCount": 1
+  },
+  "MaintainabilityIndexAnalysis": {
+    "MinimumMaintainabilityIndex": 65
+  },
+  "CyclomaticComplexityAnalysis": {
+    "MaximumComplexity": 6
+  },
+  "ClassCouplingAnalysis": {
+    "MaximumClassCoupling": 15
   }
 }
 ```
@@ -203,10 +235,10 @@ The analyzer automatically tracks metrics over time when `--history-dir` is spec
 
 ```
 history/
-??? metrics_20240115-143022_a1b2c3d4.xml
-??? metrics_20240116-091534_b2c3d4e5.xml
-??? metrics_20240117-154821_c3d4e5f6.xml
-??? ...
+├── metrics_20240115-143022_a1b2c3d4.xml
+├── metrics_20240116-091534_b2c3d4e5.xml
+├── metrics_20240117-154821_c3d4e5f6.xml
+└── ...
 ```
 
 ### Viewing Historical Trends
@@ -296,7 +328,7 @@ done
 
 ## Getting Help
 
-- **Documentation**: See README.md
+- **Documentation**: See the [root README](../README.md)
 - **Issues**: Report bugs and feature requests on the project repository
 - **Configuration**: Check `appsettings.json` for available options
 

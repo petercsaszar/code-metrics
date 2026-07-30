@@ -73,6 +73,21 @@ For more accurate LOC calculation you should configure the `cloc` executable in 
     ```
 6. The results will be saved in json files separated by milestones: `analysis_results_x.json`.
 
+### Analyzing the latest snapshot instead of milestones
+`analyzer.py` walks each milestone commit found for a project. If you instead
+want metrics for the current HEAD of every project's default branch (no
+milestone matching), use `latest_snapshot_analyzer.py`:
+
+```shell
+python -m bulk_analyzer.latest_snapshot_analyzer --report-output ./reports
+```
+
+It reads the same `config.yml` (`gitlab.group_id`/`gitlab.subgroup_id`), clones
+each project, checks out HEAD, and writes both per-project HTML reports and a
+combined `latest_snapshot_results.json` with per-metric scores and LOC. In the
+Docker image, set `ANALYSIS_MODE=latest_snapshot` to select this mode instead
+(see [`../docs/DOCKER_README.md`](../docs/DOCKER_README.md)).
+
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
 
