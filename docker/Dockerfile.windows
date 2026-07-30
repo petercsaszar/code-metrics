@@ -1,5 +1,13 @@
 # Windows Server Core image with .NET SDK and Python venv
 # Supports running the analyzer in Windows containers mode
+#
+# Supports two analysis modes:
+#   - Milestone mode (default): Analyzes code at predefined milestones, tracks evolution over time
+#   - Latest snapshot mode: Analyzes HEAD of each project's default branch with metric thresholds
+#
+# Set ANALYSIS_MODE environment variable to control which mode is used:
+#   docker run ... -e ANALYSIS_MODE=milestone ... (default, milestone-based analysis)
+#   docker run ... -e ANALYSIS_MODE=latest_snapshot ... (latest HEAD analysis with thresholds)
 
 # Stage 1: build and publish the CodeMetricsAnalyzer
 FROM mcr.microsoft.com/dotnet/sdk:8.0-windowsservercore-ltsc2019 AS build
@@ -76,6 +84,11 @@ ENV CONFIG_PATH="C:\\opt\\bulk_analyzer\\config.yml"
 ENV DOTNET_INSTALL_SCRIPT="C:\\Tools\\dotnet-install.cmd"
 ENV DOTNET_INSTALL_DIR="C:\\Program Files\\dotnet"
 ENV DOTNET_ROOT="C:\\Program Files\\dotnet"
+
+# Analysis mode: "milestone" (default) or "latest_snapshot"
+# Use "latest_snapshot" to analyze HEAD of each project's default branch instead of milestones.
+ENV ANALYSIS_MODE=milestone
+
 # ENV MSBUILD_EXE_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
 # ENV MSBUILD_PATH="C:\\BuildTools\\MSBuild\\Current\\Bin"
 

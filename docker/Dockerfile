@@ -4,7 +4,7 @@
 # Build:
 #   docker build -f docker/Dockerfile -t code-metrics-analyzer .
 #
-# Run:
+# Run (milestone-based analysis):
 #   docker run --rm \
 #     -v "$(pwd)/reports:/app/reports" \
 #     -e GITLAB_TOKEN=glpat-... \
@@ -12,6 +12,15 @@
 #     -e GITLAB_GROUP_ID=42 \
 #     -e MILESTONE_1="Sprint 1,Sprint1" \
 #     -e MILESTONE_2="Sprint 2" \
+#     code-metrics-analyzer
+#
+# Run (latest snapshot analysis — method-level metrics on HEAD):
+#   docker run --rm \
+#     -v "$(pwd)/reports:/app/reports" \
+#     -e GITLAB_TOKEN=glpat-... \
+#     -e GITLAB_URL=https://gitlab.example.com \
+#     -e GITLAB_GROUP_ID=42 \
+#     -e ANALYSIS_MODE=latest_snapshot \
 #     code-metrics-analyzer
 #
 # Unity projects are handled automatically — a .sln is generated from Assets/
@@ -63,6 +72,7 @@ COPY --from=build /app/publish /opt/CodeMetricsAnalyzer
 
 # Copy Python source files (bulk_analyzer/config.yml is excluded via .dockerignore)
 COPY bulk_analyzer/analyzer.py \
+     bulk_analyzer/latest_snapshot_analyzer.py \
      bulk_analyzer/milestone_commit_finder.py \
      bulk_analyzer/dotnet_environment.py \
      bulk_analyzer/html_report_generator.py \
@@ -123,6 +133,10 @@ ENV CLOC_PATH=cloc
 # Do not override ANALYZER_CONFIG unless you are mounting a hand-crafted config.yml.
 ENV ANALYZER_CONFIG=/tmp/runtime-config.yml
 ENV CONFIG_PATH=/tmp/runtime-config.yml
+
+# Analysis mode: "milestone" (default) or "latest_snapshot"
+# Use "latest_snapshot" to analyze HEAD of each project's default branch instead of milestones.
+ENV ANALYSIS_MODE=milestone
 
 # Entrypoint merges config.yml defaults with env-var overrides, then runs analyzer.py
 ENTRYPOINT ["/bin/bash", "/opt/entrypoint.sh"]

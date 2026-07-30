@@ -168,5 +168,14 @@ PYEOF
 export ANALYZER_CONFIG="${ANALYZER_CONFIG:-/tmp/runtime-config.yml}"
 export CONFIG_PATH="$ANALYZER_CONFIG"
 
-# ── Run analyzer ──────────────────────────────────────────────────────────────
-exec python3 -m bulk_analyzer.analyzer "$@"
+# ── Run analyzer in the selected mode ─────────────────────────────────────────
+# ANALYSIS_MODE can be "milestone" (default) or "latest_snapshot"
+ANALYSIS_MODE="${ANALYSIS_MODE:-milestone}"
+
+if [ "$ANALYSIS_MODE" = "latest_snapshot" ]; then
+    echo "[INFO]  Analysis mode   : latest_snapshot (HEAD of default branch)"
+    exec python3 -m bulk_analyzer.latest_snapshot_analyzer "$@"
+else
+    echo "[INFO]  Analysis mode   : milestone (default)"
+    exec python3 -m bulk_analyzer.analyzer "$@"
+fi
