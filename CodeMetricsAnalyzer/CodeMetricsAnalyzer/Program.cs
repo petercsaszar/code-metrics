@@ -5,6 +5,7 @@ using System.CommandLine.Invocation;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using System.Globalization;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using System.Runtime.InteropServices;
@@ -17,6 +18,9 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
+        CultureInfo.DefaultThreadCurrentCulture = new CultureInfo("en-US");
+        CultureInfo.DefaultThreadCurrentUICulture = new CultureInfo("en-US");
+        
         var rootCommand = new RootCommand
         {
             CreateAnalyzeCommand()
@@ -105,7 +109,7 @@ public class Program
                 AnalyzerConfiguration = analyzerConfiguration
             };
 
-            var analyzeCommand = new AnalyzeCommand(options);
+            using var analyzeCommand = new AnalyzeCommand(options);
             context.ExitCode = await analyzeCommand.RunAnalysisAsync(cancellationToken);
         });
 

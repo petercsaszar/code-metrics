@@ -3,8 +3,9 @@ import contextlib
 import io
 import json
 import os
+import tempfile
+import shutil
 import sys
-import platform
 
 
 def make_absolute(path):
@@ -21,6 +22,13 @@ def main():
     parser.add_argument("--solution-path", help="Optional solution path relative to repository root")
     parser.add_argument("--custom-build-command", help="Optional custom build command to execute prior to analysis")
     parser.add_argument("--msbuild-path", default=None, help="Optional override for MSBuild path")
+    parser.add_argument(
+        "--analysis-mode",
+        choices=["summary", "method"],
+        default=os.environ.get("PUBLIC_ANALYSIS_MODE", "summary"),
+        help="Choose aggregated summary scores or method-level diagnostics",
+    )
+    parser.add_argument("--report-output", help="Optional path to write JSON report to inside container", default=None)
     args = parser.parse_args()
 
     repo_path = normalize_repo_path(args.repo_path)
@@ -37,13 +45,36 @@ def main():
 
     analyzer.ANALYZER_DIR = make_absolute(analyzer.ANALYZER_DIR)
     log_buffer = io.StringIO()
-    metrics = {}
-    with contextlib.redirect_stdout(log_buffer):
-        custom = analyzer.run_analyzers(repo_path, solution_path, custom_build_command)
+    custom = {}
+    method = []
 
-        # Built-in Roslyn metrics may require Windows-specific setup; run on Windows only
-        if platform.system() == "Windows":
-            metrics = analyzer.run_builtin_roslyn_metrics(repo_path, solution_path, custom_build_command)
+    if args.analysis_mode == "method":
+        from bulk_analyzer import method_analyzer  # type: ignore
+
+        if args.msbuild_path:
+            method_analyzer.MSBUILD_DIR = args.msbuild_path
+        else:
+            method_analyzer.MSBUILD_DIR = os.environ.get("MSBUILD_PATH", "dotnet")
+
+        method_analyzer.ANALYZER_DIR = make_absolute(method_analyzer.ANALYZER_DIR)
+
+        temp_dir = tempfile.mkdtemp(prefix="method_xml_")
+        output_xml_path = os.path.join(temp_dir, "analysis.xml")
+        try:
+            with contextlib.redirect_stdout(log_buffer):
+                ok = method_analyzer.run_analyzers_with_output(
+                    repo_path,
+                    output_xml_path,
+                    solution_path,
+                    custom_build_command,
+                )
+                if ok:
+                    method = method_analyzer.parse_xml_output(output_xml_path)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    else:
+        with contextlib.redirect_stdout(log_buffer):
+            custom = analyzer.run_analyzers(repo_path, solution_path, custom_build_command)
 
     logs = log_buffer.getvalue()
     if logs:
@@ -53,8 +84,20 @@ def main():
 
     payload = {
         "custom": custom or {},
-        "metrics": metrics or {},
+        "method": method,
     }
+
+    # Emit to stdout and optionally to a file inside the container
+    if args.report_output:
+        try:
+            os.makedirs(os.path.dirname(args.report_output), exist_ok=True)
+        except Exception:
+            pass
+        try:
+            with open(args.report_output, "w", encoding="utf-8") as of:
+                json.dump(payload, of)
+        except Exception as e:
+            sys.stderr.write(f"Failed to write report to {args.report_output}: {e}\n")
 
     json.dump(payload, sys.stdout)
 

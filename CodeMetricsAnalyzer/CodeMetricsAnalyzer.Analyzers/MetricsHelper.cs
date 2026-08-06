@@ -1,9 +1,8 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
@@ -13,20 +12,22 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
             switch (operation.Kind)
             {
-                case OperationKind.CaseClause:
+                case OperationKind.SwitchExpressionArm:
+                case OperationKind.CatchClause:
                 case OperationKind.Coalesce:
                 case OperationKind.Conditional:
                 case OperationKind.ConditionalAccess:
                 case OperationKind.Loop:
                     return true;
 
+                // Count case clauses except default — default is the "else" path in McCabe's model.
+                case OperationKind.CaseClause:
+                    return !(operation is IDefaultCaseClauseOperation);
+
                 case OperationKind.BinaryOperator:
-                    var binaryOperation = (IBinaryOperation)operation;
-                    return binaryOperation.OperatorKind == BinaryOperatorKind.ConditionalAnd ||
-                           binaryOperation.OperatorKind == BinaryOperatorKind.ConditionalOr ||
-                           (binaryOperation.Type?.SpecialType == SpecialType.System_Boolean &&
-                            (binaryOperation.OperatorKind == BinaryOperatorKind.Or ||
-                             binaryOperation.OperatorKind == BinaryOperatorKind.And));
+                    var binaryOp = (IBinaryOperation)operation;
+                    return binaryOp.OperatorKind == BinaryOperatorKind.ConditionalAnd ||
+                           binaryOp.OperatorKind == BinaryOperatorKind.ConditionalOr;
 
                 default:
                     return false;
@@ -101,11 +102,11 @@ namespace CodeMetricsAnalyzer.Analyzers
                     operatorText = unary.OperatorKind.ToString();
                     return true;
 
-                case IConditionalOperation conditional:
+                case IConditionalOperation _:
                     operatorText = "?:";
                     return true;
 
-                case ICoalesceOperation coalesce:
+                case ICoalesceOperation _:
                     operatorText = "??";
                     return true;
 
@@ -129,7 +130,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                     operatorText = branch.BranchKind.ToString();
                     return true;
 
-                case IReturnOperation returnOp:
+                case IReturnOperation _:
                     operatorText = "return";
                     return true;
 
@@ -171,12 +172,101 @@ namespace CodeMetricsAnalyzer.Analyzers
             }
         }
 
-        public static int CalculateLinesOfCode(MethodDeclarationSyntax method)
+        /// <summary>
+        /// Counts logical lines of code (executable statements) for a method, constructor, or
+        /// property accessor body — matching Visual Studio's definition, which excludes blank
+        /// lines, comments, and braces.
+        /// </summary>
+        public static int CalculateLinesOfCode(SyntaxNode memberNode)
         {
-            SyntaxNode syntaxToMeasure = (SyntaxNode)method.Body ?? (SyntaxNode)method.ExpressionBody ?? method;
-            var lineSpan = syntaxToMeasure.SyntaxTree.GetLineSpan(syntaxToMeasure.Span);
+            BlockSyntax body = null;
+            bool hasExpressionBody = false;
 
-            return Math.Max(1, lineSpan.EndLinePosition.Line - lineSpan.StartLinePosition.Line + 1);
+            switch (memberNode)
+            {
+                case MethodDeclarationSyntax m:
+                    body = m.Body;
+                    hasExpressionBody = m.ExpressionBody != null;
+                    break;
+                case ConstructorDeclarationSyntax c:
+                    body = c.Body;
+                    hasExpressionBody = c.ExpressionBody != null;
+                    break;
+                case AccessorDeclarationSyntax a:
+                    body = a.Body;
+                    hasExpressionBody = a.ExpressionBody != null;
+                    break;
+            }
+
+            if (body != null)
+            {
+                int count = 0;
+                foreach (var node in body.DescendantNodes())
+                {
+                    if (node is StatementSyntax && !(node is BlockSyntax))
+                        count++;
+                }
+                return Math.Max(1, count);
+            }
+
+            return hasExpressionBody ? 1 : 0;
+        }
+
+        /// <summary>
+        /// Collects instance field and property accesses from within an operation tree,
+        /// restricted to members of <paramref name="containingType"/>.
+        /// This is used by LCOM analyzers instead of DataFlowAnalysis, which does not
+        /// see auto-property backing fields accessed through property syntax.
+        /// </summary>
+        public static void CollectMemberAccesses(
+            IOperation rootOperation,
+            HashSet<ISymbol> accessedMembers,
+            INamedTypeSymbol containingType)
+        {
+            foreach (var op in rootOperation.DescendantsAndSelf())
+            {
+                if (op is IFieldReferenceOperation fieldRef)
+                {
+                    if (!fieldRef.Field.IsStatic &&
+                        !fieldRef.Field.IsImplicitlyDeclared &&
+                        SymbolEqualityComparer.Default.Equals(
+                            fieldRef.Field.ContainingType.OriginalDefinition,
+                            containingType.OriginalDefinition))
+                    {
+                        accessedMembers.Add(fieldRef.Field.OriginalDefinition);
+                    }
+                }
+                else if (op is IPropertyReferenceOperation propRef)
+                {
+                    if (!propRef.Property.IsStatic &&
+                        !propRef.Property.IsIndexer &&
+                        SymbolEqualityComparer.Default.Equals(
+                            propRef.Property.ContainingType.OriginalDefinition,
+                            containingType.OriginalDefinition))
+                    {
+                        accessedMembers.Add(propRef.Property.OriginalDefinition);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns the count of instance members (non-static explicit fields + non-static
+        /// non-indexer properties) that are tracked for LCOM calculations.
+        /// Auto-property backing fields (IsImplicitlyDeclared) are excluded to avoid
+        /// double-counting alongside their corresponding property.
+        /// </summary>
+        public static int GetTrackedMemberCount(INamedTypeSymbol typeSymbol)
+        {
+            int count = 0;
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                if (member is IFieldSymbol field && !field.IsStatic && !field.IsImplicitlyDeclared)
+                    count++;
+                else if (member is IPropertySymbol property && !property.IsStatic && !property.IsIndexer)
+                    count++;
+            }
+            return count;
         }
     }
 }

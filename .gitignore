@@ -580,3 +580,11 @@ config.yml
 repos/
 analysis_results_*.json
 commit_data.json
+method_analysis_results_*.json
+method_analysis_results.json
+xml_outputs/
+
+reports/
+
+# AI memory log — tracked despite the blanket *.log rule above
+!.claude/memory/decisions.log

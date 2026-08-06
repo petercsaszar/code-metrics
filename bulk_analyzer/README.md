@@ -4,9 +4,15 @@ This tools written in Python finds milestones in students projects by searching 
 ## Usage
 ### Requirements
 Installed `python3` and `dotnet`, optionally `unity`.
+For more accurate LOC calculation, install `cloc` (https://github.com/AlDanial/cloc).
+For optional CodeChecker visualization/export workflow, install `CodeChecker` (https://codechecker.readthedocs.io/) on the machine where you want to inspect/store the exported reports.
 
 ### Configuration
 Create a `config.yml` file. An example configuration (`config.example.yml`) is provided. The GitLab url (`url`), access token(`token`) and the id for the main group (found in the url when accessing the group from browser, `group_id`) need to be updated. Analysing a single group is possible by filling the `subgroup_id` with the subgroup name like above.
+
+To analyze Unity projects the `analyzer.unity_path` and the `analyzer.unity_version` should be set.
+
+For more accurate LOC calculation you should configure the `cloc` executable in `config.yml` under `analyzer.cloc_path` (default: `cloc`). If you need to install `cloc`, get it from https://github.com/AlDanial/cloc.
 
 ### Usage (on Windows)
 1. Open `Developer Powershell for VS 2022` from this folder.
@@ -67,8 +73,43 @@ Create a `config.yml` file. An example configuration (`config.example.yml`) is p
     ```
 6. The results will be saved in json files separated by milestones: `analysis_results_x.json`.
 
+### Analyzing the latest snapshot instead of milestones
+`analyzer.py` walks each milestone commit found for a project. If you instead
+want metrics for the current HEAD of every project's default branch (no
+milestone matching), use `latest_snapshot_analyzer.py`:
+
+```shell
+python -m bulk_analyzer.latest_snapshot_analyzer --report-output ./reports
+```
+
+It reads the same `config.yml` (`gitlab.group_id`/`gitlab.subgroup_id`), clones
+each project, checks out HEAD, and writes both per-project HTML reports and a
+combined `latest_snapshot_results.json` with per-metric scores and LOC. In the
+Docker image, set `ANALYSIS_MODE=latest_snapshot` to select this mode instead
+(see [`../docs/DOCKER_README.md`](../docs/DOCKER_README.md)).
+
 ### Visualize results
 The results can be visualized using the jupyter notebooks found in the `visualization` folder. Start the python virtual environment mentioned above and run `jupyter notebook` to start a notebook.
+
+### Generate a HTML report (work in progress)
+You can also generate a standalone HTML report for the bulk analyzer outputs. The report includes summary cards, sortable tables, and a sunburst diagram that shows the hierarchy `source → project/ref → issue type → severity`.
+
+From the workspace root:
+
+```shell
+python -m bulk_analyzer.html_report_generator
+```
+
+By default the generator looks for:
+- `method_analysis_results*.json`
+- `analysis_results*.json`
+- `public_analysis_results.json`
+
+The default output file is `bulk_analysis_report.html`. You can override the inputs and output path:
+
+```shell
+python -m bulk_analyzer.html_report_generator --inputs method_analysis_results_1.json method_analysis_results_2.json --output reports/bulk-report.html
+```
 
 ### Docker Workflow (Linux & Windows)
 
@@ -105,6 +146,14 @@ pip install -r bulk_analyzer/requirements.txt
 python bulk_analyzer/public_project_analyzer.py
 ```
 
+- Orchestrated method-level diagnostics (container emits parsed per-method diagnostics):
+
+```bash
+PUBLIC_ANALYSIS_MODE=method \
+PUBLIC_OUTPUT_FILE=public_method_analysis_results.json \
+python bulk_analyzer/public_project_analyzer.py
+```
+
 **Windows Containers**
 - Switch Docker Desktop to Windows containers mode (tray icon → Switch to Windows containers).
 - Build Windows image:
@@ -133,6 +182,16 @@ $env:DOCKER_IMAGE = 'code-metrics-analyzer:windows'
 python bulk_analyzer/public_project_analyzer.py
 ```
 
+- Orchestrated method-level diagnostics:
+
+```powershell
+$env:CONTAINER_OS = 'windows'
+$env:DOCKER_IMAGE = 'code-metrics-analyzer:windows'
+$env:PUBLIC_ANALYSIS_MODE = 'method'
+$env:PUBLIC_OUTPUT_FILE = 'public_method_analysis_results.json'
+python bulk_analyzer/public_project_analyzer.py
+```
+
 **Cross-Platform Tag (optional)**
 - Publish separate images for Linux and Windows, then create a manifest so one tag resolves automatically:
 
@@ -151,13 +210,36 @@ The analyzer and the container orchestration use several environment variables a
 - **ANALYZER_CONFIG / CONFIG_PATH**: Path to the YAML configuration file used by the analyzer. When running inside the official image these are set to `/opt/bulk_analyzer/config.yml` (see `docker/Dockerfile`). If not set, the code falls back to `config.yml` in the current working directory.
 - **DOCKER_IMAGE**: Override the Docker image name used by `public_project_analyzer.py` when spawning containers. Default: value from the config `docker.image` or `code-metrics-analyzer`.
 - **CONTAINER_OS**: Explicitly select container OS branch (`windows` or `linux`). Default: value from config `docker.os` or `linux` if not set. Set to `windows` when using the Windows image and Windows containers mode.
+- **PUBLIC_ANALYSIS_MODE**: Select output mode for `public_project_analyzer.py`. Supported values: `summary` (default) and `method` (returns parsed per-method diagnostics from XML).
+- **PUBLIC_OUTPUT_FILE**: Override output file name written by `public_project_analyzer.py`. Default: value from config `public_analyzer.output_file` or `public_analysis_results.json`.
 - **MSBUILD_PATH**: Path or command to the MSBuild/dotnet binary to use (e.g. `dotnet`). Default: `dotnet`.
-- **METRICS_PATH**: Path to the `Metrics.exe` executable (Windows only). When set, the analyzer will use this path to run Roslyn metrics analysis directly via `Metrics.exe` instead of the MSBuild target. Default: searched in `C:\opt\metrics\Metrics.exe`, `C:\Program Files\Metrics\Metrics.exe`, and PATH.
 - **ANALYSIS_LOGFILE**: Path where container run failures and error details are appended. Default: `analysis_errors.log` in the workspace root unless overridden.
 - **DUMP_CONTAINER_OUTPUT**: When set to `1`, `true`, or `True` the orchestrator will append full container STDOUT/STDERR to `ANALYSIS_LOGFILE` even on successful runs (useful for debugging noisy containers).
 - **LOG_LEVEL**: Logging verbosity for the Python code (`DEBUG`, `INFO`, `WARNING`, `ERROR`). Default: `INFO`.
+- **CLOC_PATH**: Optional override for the `cloc` executable name/path used for LOC calculation. Default source is `analyzer.cloc_path` in `config.yml` (fallback `cloc`). If this environment variable is set, it overrides the config value. If `cloc` is unavailable, the analyzer falls back to internal non-empty line counting for `.cs` files.
 - **BUNDLED_ANALYZER_PATH**: Path where the published CodeMetricsAnalyzer DLL is expected inside the image (used as a fallback when the analyzer project is not mounted). Default: `/opt/CodeMetricsAnalyzer`.
 - **PYTHONPATH**: Not required by the analyzer itself but useful when bind-mounting your workspace into the image so Python can import the `bulk_analyzer` package (examples in this README use `--env PYTHONPATH=/workspace`).
+- **CODECHECKER_EXPORT_DIR**: Optional override for the export directory used by method-level analyzer when writing CodeChecker-compatible artifacts. Default source is `codechecker.export_dir` in `config.yml` (fallback `../codechecker_reports`).
+
+### Optional CodeChecker visualization export (method-level mode)
+
+The method-level analyzer can export **its own CMA findings** in CodeChecker-compatible formats (for visualization).
+No CodeChecker analyzers are executed.
+
+Enable it in `config.yml`:
+
+```yaml
+codechecker:
+    enabled: true
+    export_dir: "../codechecker_reports"
+    export_plist: true
+    export_json: true
+```
+
+Notes:
+- Exported files are generated per analyzed commit under `codechecker_reports/<project>_<commit>/`.
+- `custom_metrics.plist` can be consumed by CodeChecker tooling/UI flows that accept plist reports.
+- `custom_metrics.json` follows the CodeChecker parse JSON schema for machine processing.
 
 Build-time argument and runtime variables for .NET installation:
 

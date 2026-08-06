@@ -1,12 +1,9 @@
 using System.Collections.Immutable;
-using System.Linq;
 using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.CodeAnalysis.Operations;
 
 namespace CodeMetricsAnalyzer.Analyzers
 {
@@ -22,21 +19,12 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeMethod(SyntaxNodeAnalysisContext context)
         {
-            var methodDeclaration = (MethodDeclarationSyntax)context.Node;
-
-            if (methodDeclaration.Body is null && methodDeclaration.ExpressionBody is null)
+            if (!TryGetMemberComponents(context.Node,
+                    out var identifier, out _, out _, out _))
                 return;
 
-            var model = context.SemanticModel;
-
-            var methodBodyOp = model.GetOperation(methodDeclaration, context.CancellationToken) as IMethodBodyOperation;
-
-            // fallback
-            IOperation rootOp = methodBodyOp?.BlockBody ?? methodBodyOp?.ExpressionBody;
-            if (rootOp is null && methodDeclaration.Body != null)
-                rootOp = model.GetOperation(methodDeclaration.Body, context.CancellationToken);
-
-            if (rootOp is null)
+            var rootOp = GetMemberOperation(context.SemanticModel, context.Node, context.CancellationToken);
+            if (rootOp == null)
                 return;
 
             int complexity = MetricsHelper.CalculateCyclomaticComplexity(rootOp);
@@ -46,11 +34,10 @@ namespace CodeMetricsAnalyzer.Analyzers
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.CyclomaticComplexityRule,
-                    methodDeclaration.Identifier.GetLocation(),
-                    methodDeclaration.Identifier.Text,
+                    identifier.GetLocation(),
+                    identifier.Text,
                     complexity);
             }
         }
-
     }
 }

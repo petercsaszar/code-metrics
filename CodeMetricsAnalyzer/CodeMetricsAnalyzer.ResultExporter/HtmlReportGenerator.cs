@@ -429,57 +429,85 @@ public class HtmlReportGenerator
 
         if (project.Diagnostics.Any())
         {
-            var groupedByFile = project.Diagnostics
-                .GroupBy(d => d.FilePath)
-                .OrderBy(g => g.Key);
+            // Metric sort buttons — one per unique diagnostic ID found in this project
+            var uniqueDiagIds = project.Diagnostics
+                .Select(d => d.Id)
+                .Distinct()
+                .OrderBy(id => id)
+                .ToList();
 
-            foreach (var fileGroup in groupedByFile)
+            html.AppendLine("<div class=\"metric-sort-bar\">");
+            html.AppendLine("<span class=\"metric-sort-label\">Sort by metric (worst first):</span>");
+            foreach (var diagId in uniqueDiagIds)
             {
-                html.AppendLine($"<h2>File: {EscapeHtml(Path.GetFileName(fileGroup.Key))}</h2>");
-                html.AppendLine($"<p class=\"file-path\">{EscapeHtml(fileGroup.Key)}</p>");
-                
-                html.AppendLine("<table class=\"diagnostics-table\">");
-                html.AppendLine("<thead><tr><th>Line</th><th>ID</th><th>Severity</th><th>Message</th><th>Action</th></tr></thead>");
-                html.AppendLine("<tbody>");
-                
-                var diagnosticId = 0;
-                foreach (var diagnostic in fileGroup.OrderBy(d => d.Location.Line))
-                {
-                    var snippetId = $"snippet_{diagnosticId}";
-                    html.AppendLine("<tr>");
-                    html.AppendLine($"<td><code>{diagnostic.Location.Line}:{diagnostic.Location.Character}</code></td>");
-                    html.AppendLine($"<td><code>{EscapeHtml(diagnostic.Id)}</code></td>");
-                    html.AppendLine($"<td><span class=\"severity-{diagnostic.Severity.ToLower()}\">{EscapeHtml(diagnostic.Severity)}</span></td>");
-                    html.AppendLine($"<td>{EscapeHtml(diagnostic.Message)}</td>");
-                    html.AppendLine($"<td><button class=\"toggle-snippet\" onclick=\"toggleSnippet('{snippetId}')\">Show Code</button></td>");
-                    html.AppendLine("</tr>");
-                    
-                    html.AppendLine($"<tr id=\"{snippetId}\" class=\"code-snippet-row\" style=\"display: none;\">");
-                    html.AppendLine("<td colspan=\"5\">");
-                    html.AppendLine("<div class=\"code-snippet\">");
-                    
-                    var snippet = await GetCodeSnippetAsync(fileGroup.Key, diagnostic.Location.Line, cancellationToken);
-                    if (!string.IsNullOrEmpty(snippet))
-                    {
-                        html.AppendLine("<pre><code>");
-                        html.Append(snippet); // Don't use AppendLine since snippet already has newlines
-                        html.AppendLine("</code></pre>");
-                    }
-                    else
-                    {
-                        html.AppendLine("<p class=\"snippet-error\">Unable to load code snippet</p>");
-                    }
-                    
-                    html.AppendLine("</div>");
-                    html.AppendLine("</td>");
-                    html.AppendLine("</tr>");
-                    
-                    diagnosticId++;
-                }
-                
-                html.AppendLine("</tbody>");
-                html.AppendLine("</table>");
+                var firstDiag = project.Diagnostics.First(d => d.Id == diagId);
+                var sortDir = GetMetricSortDirection(diagId);
+                html.AppendLine($"<button class=\"metric-sort-btn\" data-diag-id=\"{EscapeHtml(diagId)}\" onclick=\"sortByMetric('{EscapeHtml(diagId)}', '{sortDir}')\" title=\"{EscapeHtml(firstDiag.Title)}\">");
+                html.AppendLine($"  {EscapeHtml(diagId)}");
+                html.AppendLine($"  <span class=\"metric-sort-btn-title\">{EscapeHtml(firstDiag.Title)}</span>");
+                html.AppendLine("</button>");
             }
+            html.AppendLine("<button class=\"metric-sort-btn metric-sort-clear\" onclick=\"clearMetricSort()\">&#10006; Clear</button>");
+            html.AppendLine("</div>");
+
+            // Single flat table — all diagnostics across all files
+            html.AppendLine("<table class=\"diagnostics-table sortable-table\" id=\"diagnosticsTable\" data-sort-col=\"0\" data-sort-dir=\"asc\">");
+            html.AppendLine("<thead><tr>");
+            html.AppendLine("<th data-sortable data-type=\"str\" data-default-dir=\"asc\" class=\"sort-asc\">File</th>");
+            html.AppendLine("<th data-sortable data-type=\"num\" data-default-dir=\"asc\">Line</th>");
+            html.AppendLine("<th data-sortable data-type=\"str\" data-default-dir=\"asc\">ID</th>");
+            html.AppendLine("<th data-sortable data-type=\"num\" data-default-dir=\"desc\">Severity</th>");
+            html.AppendLine("<th data-sortable data-type=\"str\" data-default-dir=\"asc\">Message</th>");
+            html.AppendLine("<th>Action</th>");
+            html.AppendLine("</tr></thead>");
+            html.AppendLine("<tbody>");
+
+            var diagnosticId = 0;
+            foreach (var diagnostic in project.Diagnostics
+                .OrderBy(d => d.FilePath)
+                .ThenBy(d => d.Location.Line))
+            {
+                var snippetId = $"snippet_{diagnosticId}";
+                var metricValue = ExtractMetricValue(diagnostic.Message);
+                var metricValueAttr = metricValue.HasValue
+                    ? metricValue.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : "";
+                var fileName = Path.GetFileName(diagnostic.FilePath);
+
+                html.AppendLine($"<tr data-snippet=\"{snippetId}\" data-diag-id=\"{EscapeHtml(diagnostic.Id)}\" data-metric-value=\"{metricValueAttr}\" data-original-index=\"{diagnosticId}\">");
+                html.AppendLine($"<td data-value=\"{EscapeHtml(fileName)}\" title=\"{EscapeHtml(diagnostic.FilePath)}\">{EscapeHtml(fileName)}</td>");
+                html.AppendLine($"<td data-value=\"{diagnostic.Location.Line}\"><code>{diagnostic.Location.Line}:{diagnostic.Location.Character}</code></td>");
+                html.AppendLine($"<td data-value=\"{EscapeHtml(diagnostic.Id)}\"><code>{EscapeHtml(diagnostic.Id)}</code></td>");
+                html.AppendLine($"<td data-value=\"{GetSeverityOrder(diagnostic.Severity)}\"><span class=\"severity-{diagnostic.Severity.ToLower()}\">{EscapeHtml(diagnostic.Severity)}</span></td>");
+                html.AppendLine($"<td data-value=\"{EscapeHtml(diagnostic.Message)}\">{EscapeHtml(diagnostic.Message)}</td>");
+                html.AppendLine($"<td><button class=\"toggle-snippet\" onclick=\"toggleSnippet('{snippetId}')\">Show Code</button></td>");
+                html.AppendLine("</tr>");
+
+                html.AppendLine($"<tr id=\"{snippetId}\" class=\"code-snippet-row\" style=\"display: none;\">");
+                html.AppendLine("<td colspan=\"6\">");
+                html.AppendLine("<div class=\"code-snippet\">");
+
+                var snippet = await GetCodeSnippetAsync(diagnostic.FilePath, diagnostic.Location.Line, cancellationToken);
+                if (!string.IsNullOrEmpty(snippet))
+                {
+                    html.AppendLine("<pre><code>");
+                    html.Append(snippet); // Don't use AppendLine since snippet already has newlines
+                    html.AppendLine("</code></pre>");
+                }
+                else
+                {
+                    html.AppendLine("<p class=\"snippet-error\">Unable to load code snippet</p>");
+                }
+
+                html.AppendLine("</div>");
+                html.AppendLine("</td>");
+                html.AppendLine("</tr>");
+
+                diagnosticId++;
+            }
+
+            html.AppendLine("</tbody>");
+            html.AppendLine("</table>");
         }
         else
         {
@@ -768,9 +796,36 @@ a:hover {
 
 .code-snippet {
     padding: 15px;
-    background-color: #282c34;
+    background-color: #1e2533;
+    border-radius: 6px;
+    border: 1px solid #3a4a5c;
+    overflow: auto;
+    max-height: 480px;
+    scrollbar-width: thin;
+    scrollbar-color: #4a5568 #1e2533;
+}
+
+.code-snippet::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.code-snippet::-webkit-scrollbar-track {
+    background: #1e2533;
     border-radius: 4px;
-    overflow-x: auto;
+}
+
+.code-snippet::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 4px;
+}
+
+.code-snippet::-webkit-scrollbar-thumb:hover {
+    background: #5a6578;
+}
+
+.code-snippet::-webkit-scrollbar-corner {
+    background: #1e2533;
 }
 
 .code-snippet pre {
@@ -849,6 +904,107 @@ a:hover {
     color: #2c3e50;
     margin-bottom: 15px;
     font-size: 1.3em;
+}
+
+th[data-sortable] {
+    cursor: pointer;
+    user-select: none;
+    padding-right: 26px;
+    position: relative;
+}
+
+th[data-sortable]:hover {
+    background-color: #2980b9;
+}
+
+th[data-sortable]::after {
+    content: '⇅';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.45;
+    font-size: 0.85em;
+}
+
+th.sort-asc::after {
+    content: '↑';
+    opacity: 1;
+}
+
+th.sort-desc::after {
+    content: '↓';
+    opacity: 1;
+}
+
+.metric-sort-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: 20px 0 10px;
+    padding: 12px 16px;
+    background-color: #f0f4f8;
+    border: 1px solid #d0dce8;
+    border-radius: 8px;
+}
+
+.metric-sort-label {
+    font-weight: 600;
+    color: #495057;
+    font-size: 0.9em;
+    white-space: nowrap;
+    margin-right: 4px;
+}
+
+.metric-sort-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background-color: #3498db;
+    color: white;
+    border: 2px solid transparent;
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.88em;
+    font-weight: 700;
+    line-height: 1.2;
+    transition: background-color 0.2s, transform 0.15s, box-shadow 0.2s;
+}
+
+.metric-sort-btn-title {
+    font-size: 0.75em;
+    font-weight: 400;
+    opacity: 0.88;
+    margin-top: 3px;
+    max-width: 130px;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.metric-sort-btn:hover {
+    background-color: #2980b9;
+    transform: translateY(-2px);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+}
+
+.metric-sort-btn.active {
+    background-color: #1a5276;
+    border-color: #5dade2;
+    box-shadow: 0 0 0 3px rgba(52,152,219,0.35);
+}
+
+.metric-sort-clear {
+    background-color: #95a5a6;
+    font-weight: 600;
+    font-size: 0.85em;
+}
+
+.metric-sort-clear:hover {
+    background-color: #7f8c8d;
 }
 ";
 
@@ -1018,6 +1174,38 @@ if (severityCtx) {{
         return "high";
     }
 
+    private int GetSeverityOrder(string severity) => severity.ToLower() switch
+    {
+        "error" => 3,
+        "warning" => 2,
+        "info" => 1,
+        _ => 0
+    };
+
+    /// <summary>
+    /// Returns "asc" when a lower numeric value is the worst outcome (e.g. Maintainability Index),
+    /// or "desc" when a higher value is the worst outcome (all other metrics).
+    /// </summary>
+    private static string GetMetricSortDirection(string diagnosticId) => diagnosticId switch
+    {
+        "CMA0005" => "asc",   // Low Maintainability Index: lower = worse
+        _ => "desc"            // All others: higher = worse
+    };
+
+    /// <summary>Extracts the numeric metric value that appears in parentheses inside a diagnostic message.</summary>
+    private static double? ExtractMetricValue(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return null;
+        var match = System.Text.RegularExpressions.Regex.Match(message, @"\(([-+]?\d[\d.,]*)\)");
+        if (match.Success && double.TryParse(
+                match.Groups[1].Value.Replace(',', '.'),
+                System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out var value))
+            return value;
+        return null;
+    }
+
     private string EscapeHtml(string text)
     {
         if (string.IsNullOrEmpty(text)) return string.Empty;
@@ -1103,16 +1291,22 @@ if (severityCtx) {{
             "abstract ", "sealed "
         };
         
-        var looksLikeMethod = methodPatterns.Any(p => targetLineText.Contains(p)) 
-            && targetLineText.Contains("(");
-        
+        // Type-declaration keywords don't have parentheses, so we check for them separately
+        var typeKeywords = new[] { "class ", "struct ", "interface ", "enum ", "record " };
+
+        bool IsCodeBlockDeclaration(string line) =>
+            methodPatterns.Any(p => line.Contains(p)) &&
+            (line.Contains("(") || typeKeywords.Any(k => line.Contains(k)));
+
+        var looksLikeMethod = IsCodeBlockDeclaration(targetLineText);
+
         if (!looksLikeMethod)
         {
-            // Try to find method declaration above current line
+            // Try to find a method or type declaration on or above the target line
             for (int i = targetLine; i >= Math.Max(0, targetLine - 10); i--)
             {
                 var line = lines[i].Trim();
-                if (methodPatterns.Any(p => line.Contains(p)) && line.Contains("("))
+                if (IsCodeBlockDeclaration(line))
                 {
                     targetLine = i;
                     looksLikeMethod = true;
@@ -1120,7 +1314,7 @@ if (severityCtx) {{
                 }
             }
         }
-        
+
         if (!looksLikeMethod)
             return null;
 
@@ -1195,7 +1389,7 @@ if (severityCtx) {{
 function toggleSnippet(snippetId) {
     const snippetRow = document.getElementById(snippetId);
     const button = event.target;
-    
+
     if (snippetRow.style.display === 'none') {
         snippetRow.style.display = 'table-row';
         button.textContent = 'Hide Code';
@@ -1205,6 +1399,133 @@ function toggleSnippet(snippetId) {
         button.textContent = 'Show Code';
         button.classList.remove('active');
     }
+}
+
+function sortTable(table, colIndex, dataType, defaultDir) {
+    const isNewColumn = parseInt(table.dataset.sortCol ?? '-1') !== colIndex;
+    const currentDir = isNewColumn
+        ? (defaultDir || 'asc')
+        : (table.dataset.sortDir === 'asc' ? 'desc' : 'asc');
+    table.dataset.sortDir = currentDir;
+    table.dataset.sortCol = colIndex;
+
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.code-snippet-row)'));
+
+    rows.sort((a, b) => {
+        const aVal = a.cells[colIndex]?.dataset.value ?? '';
+        const bVal = b.cells[colIndex]?.dataset.value ?? '';
+        let cmp;
+        if (dataType === 'num') {
+            cmp = (parseFloat(aVal) || 0) - (parseFloat(bVal) || 0);
+        } else {
+            cmp = aVal.localeCompare(bVal);
+        }
+        return currentDir === 'asc' ? cmp : -cmp;
+    });
+
+    for (const row of rows) {
+        tbody.appendChild(row);
+        const snippetId = row.dataset.snippet;
+        if (snippetId) {
+            const snippetRow = document.getElementById(snippetId);
+            if (snippetRow) tbody.appendChild(snippetRow);
+        }
+    }
+
+    table.querySelectorAll('th[data-sortable]').forEach((th, i) => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (i === colIndex) th.classList.add(currentDir === 'asc' ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+document.querySelectorAll('table.sortable-table').forEach(table => {
+    table.querySelectorAll('th[data-sortable]').forEach((th, colIndex) => {
+        th.addEventListener('click', () => {
+            // Un-hide any rows hidden by a metric filter before sorting
+            table.querySelectorAll('tbody tr:not(.code-snippet-row)').forEach(r => { r.style.display = ''; });
+            sortTable(table, colIndex, th.dataset.type, th.dataset.defaultDir);
+            document.querySelectorAll('.metric-sort-btn').forEach(b => b.classList.remove('active'));
+        });
+    });
+});
+
+// Show ONLY rows for diagId, sorted worst-first.
+function sortByMetric(diagId, sortDir) {
+    const table = document.getElementById('diagnosticsTable');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.code-snippet-row)'));
+
+    // Show only matching rows; hide the rest together with any open snippets
+    rows.forEach(row => {
+        const snippetRow = row.dataset.snippet ? document.getElementById(row.dataset.snippet) : null;
+        if (row.dataset.diagId === diagId) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+            if (snippetRow) snippetRow.style.display = 'none';
+        }
+    });
+
+    // Sort visible rows worst-first
+    const matching = rows.filter(r => r.dataset.diagId === diagId);
+    matching.sort((a, b) => {
+        const aVal = parseFloat(a.dataset.metricValue) || 0;
+        const bVal = parseFloat(b.dataset.metricValue) || 0;
+        // 'desc': higher value = worse → highest first
+        // 'asc' : lower  value = worse → lowest first  (e.g. Maintainability Index)
+        return sortDir === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    for (const row of matching) {
+        tbody.appendChild(row);
+        const snippetId = row.dataset.snippet;
+        if (snippetId) {
+            const snippetRow = document.getElementById(snippetId);
+            if (snippetRow) tbody.appendChild(snippetRow);
+        }
+    }
+
+    // Mark active button; clear column sort indicators
+    document.querySelectorAll('.metric-sort-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.diagId === diagId);
+    });
+    table.querySelectorAll('th[data-sortable]').forEach(th => th.classList.remove('sort-asc', 'sort-desc'));
+    table.dataset.sortCol = '-1';
+}
+
+// Restore original file/line order and show all rows.
+function clearMetricSort() {
+    const table = document.getElementById('diagnosticsTable');
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    const rows = Array.from(tbody.querySelectorAll('tr:not(.code-snippet-row)'));
+
+    rows.sort((a, b) => parseInt(a.dataset.originalIndex) - parseInt(b.dataset.originalIndex));
+
+    for (const row of rows) {
+        row.style.display = '';
+        tbody.appendChild(row);
+        const snippetId = row.dataset.snippet;
+        if (snippetId) {
+            const snippetRow = document.getElementById(snippetId);
+            if (snippetRow) {
+                snippetRow.style.display = 'none'; // collapse any open snippets
+                tbody.appendChild(snippetRow);
+            }
+        }
+    }
+
+    // Restore file-column sort indicator
+    table.querySelectorAll('th[data-sortable]').forEach((th, i) => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (i === 0) th.classList.add('sort-asc');
+    });
+    table.dataset.sortCol = '0';
+    table.dataset.sortDir = 'asc';
+
+    document.querySelectorAll('.metric-sort-btn').forEach(b => b.classList.remove('active'));
 }
 </script>";
     }
@@ -1279,7 +1600,7 @@ function toggleSnippet(snippetId) {
         sb.AppendLine("                    if (arcAngle < 5 || arcWidth < 30) return '';" );
         sb.AppendLine("                    const maxLength = Math.floor(arcAngle / 2);");
         sb.AppendLine("                    const name = d.data.name;");
-        sb.AppendLine("                    if (name.length > maxLength) return name.substring(0, maxLength - 1) + '�';");
+        sb.AppendLine("                    if (name.length > maxLength) return name.substring(0, maxLength - 1) + '�';");
         sb.AppendLine("                    return name;");
         sb.AppendLine("                })");
         sb.AppendLine("                .append('title').text(d => {");

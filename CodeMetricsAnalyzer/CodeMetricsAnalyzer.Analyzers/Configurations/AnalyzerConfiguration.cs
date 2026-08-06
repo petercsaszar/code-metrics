@@ -2,12 +2,12 @@
 {
     public class AnalyzerConfiguration
     {
-        public BumpyRoadAnalysisConfiguration BumpyRoadAnalysis { get; set; }
-        public FunctionParameterCountAnalysisConfiguration FunctionParameterCountAnalysis { get; set; }
-        public LCOM4AnalysisConfiguration LCOM4Analysis { get; set; }
-        public LCOM5AnalysisConfiguration LCOM5Analysis { get; set; }
-        public MaintainabilityIndexAnalysisConfiguration MaintainabilityIndexAnalysis { get; set; }
-        public CyclomaticComplexityAnalysisConfiguration CyclomaticComplexityAnalysis { get; set; }
-        public ClassCouplingAnalysisConfiguration ClassCouplingAnalysis { get; set; }
+        public BumpyRoadAnalysisConfiguration BumpyRoadAnalysis { get; set; } = new BumpyRoadAnalysisConfiguration();
+        public FunctionParameterCountAnalysisConfiguration FunctionParameterCountAnalysis { get; set; } = new FunctionParameterCountAnalysisConfiguration();
+        public LCOM4AnalysisConfiguration LCOM4Analysis { get; set; } = new LCOM4AnalysisConfiguration();
+        public LCOM5AnalysisConfiguration LCOM5Analysis { get; set; } = new LCOM5AnalysisConfiguration();
+        public MaintainabilityIndexAnalysisConfiguration MaintainabilityIndexAnalysis { get; set; } = new MaintainabilityIndexAnalysisConfiguration();
+        public CyclomaticComplexityAnalysisConfiguration CyclomaticComplexityAnalysis { get; set; } = new CyclomaticComplexityAnalysisConfiguration();
+        public ClassCouplingAnalysisConfiguration ClassCouplingAnalysis { get; set; } = new ClassCouplingAnalysisConfiguration();
     }
 }

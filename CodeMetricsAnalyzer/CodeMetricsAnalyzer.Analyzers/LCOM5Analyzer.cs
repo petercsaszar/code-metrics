@@ -1,4 +1,3 @@
-﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -6,7 +5,6 @@ using CodeMetricsAnalyzer.Analyzers.BaseAnalyzers;
 using CodeMetricsAnalyzer.Analyzers.Configurations;
 using CodeMetricsAnalyzer.Analyzers.Diagnostics;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
@@ -19,105 +17,80 @@ namespace CodeMetricsAnalyzer.Analyzers
         {
         }
 
-        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics 
+        public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
             => ImmutableArray.Create(DiagnosticDescriptors.LCOM5Rule);
 
         protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
-            var classDeclaration = (ClassDeclarationSyntax)context.Node;
+            var typeDeclaration = (TypeDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
-            var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration);
+            var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration) as INamedTypeSymbol;
 
-            if (classSymbol == null)
+            if (typeSymbol == null)
                 return;
 
-            var methods = classSymbol.GetMembers().OfType<IMethodSymbol>()
-                .Where(m => m.MethodKind == MethodKind.Ordinary)
+            // Only non-static ordinary methods are meaningful for LCOM.
+            var methods = typeSymbol.GetMembers().OfType<IMethodSymbol>()
+                .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic)
                 .ToList();
 
-            var fields = classSymbol.GetMembers().OfType<IFieldSymbol>().ToList();
+            // l = number of tracked instance attributes (non-static explicit fields + properties).
+            // Backing fields of auto-properties are excluded to avoid double-counting.
+            int l = MetricsHelper.GetTrackedMemberCount(typeSymbol);
+            int k = methods.Count;
 
-            if (methods.Count < _config.LCOM5Analysis.MinimumMethodCount || fields.Count < _config.LCOM5Analysis.MinimumFieldCount)
+            if (k < _config.LCOM5Analysis.MinimumMethodCount || l < _config.LCOM5Analysis.MinimumMemberCount)
                 return;
 
-            Dictionary<IMethodSymbol, HashSet<IFieldSymbol>> methodAccesses = new Dictionary<IMethodSymbol, HashSet<IFieldSymbol>>(SymbolEqualityComparer.Default);
+            // k == 1 makes the denominator zero — formula is undefined for single-method classes.
+            if (k == 1)
+                return;
+
+            var methodAccesses = new Dictionary<IMethodSymbol, HashSet<ISymbol>>(SymbolEqualityComparer.Default);
 
             foreach (var method in methods)
             {
-                var accessedFields = new HashSet<IFieldSymbol>(SymbolEqualityComparer.Default);
+                var accessedMembers = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
                 foreach (var syntaxRef in method.DeclaringSyntaxReferences)
                 {
-                    if (syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax)
-                    {
-                        BlockSyntax body = syntax.Body; // Normal method body
+                    if (!(syntaxRef.GetSyntax() is MethodDeclarationSyntax syntax))
+                        continue;
 
-                        if (body == null && syntax.ExpressionBody != null)
-                        {
-                            // Handle expression-bodied methods (e.g. int Square(int x) => x * x)
-                            body = SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(syntax.ExpressionBody.Expression));
-                        }
+                    var methodSemanticModel = semanticModel.Compilation.GetSemanticModel(syntax.SyntaxTree);
 
-                        if (body != null)
-                        {
-                            try
-                            {
-                                // TODO: Figure out why this is throwing an exception
-                                var dataFlow = semanticModel.AnalyzeDataFlow(body);
-                                if (dataFlow != null)
-                                {
-                                    foreach (var symbol in dataFlow.ReadInside.Concat(dataFlow.WrittenInside))
-                                    {
-                                        if (symbol is IFieldSymbol fieldSymbol)
-                                        {
-                                            accessedFields.Add(fieldSymbol);
-                                        }
-                                    }
-                                }
-                            }
-                            catch (ArgumentException)
-                            {
-                                // Ignore exceptions for now, likely due to generated code
-                                //// Debugging prints
-                                //Console.WriteLine($"Method: {syntax.Identifier.Text}");
-                                //Console.WriteLine($"SyntaxTree: {syntax.SyntaxTree.FilePath}");
-                                //Console.WriteLine($"Body SyntaxTree: {body?.SyntaxTree?.FilePath}");
-                                //Console.WriteLine($"SemanticModel SyntaxTree: {semanticModel.SyntaxTree.FilePath}");
-                            }
-                        }
-                    }
+                    // Use operation-based analysis so that auto-property accesses are counted.
+                    Microsoft.CodeAnalysis.IOperation rootOp = null;
+                    if (syntax.Body != null)
+                        rootOp = methodSemanticModel.GetOperation(syntax.Body);
+                    else if (syntax.ExpressionBody?.Expression != null)
+                        rootOp = methodSemanticModel.GetOperation(syntax.ExpressionBody.Expression);
+
+                    if (rootOp != null)
+                        MetricsHelper.CollectMemberAccesses(rootOp, accessedMembers, typeSymbol);
                 }
 
-                methodAccesses[method] = accessedFields;
+                methodAccesses[method] = accessedMembers;
             }
 
-            int k = methods.Count;
-            int l = fields.Count;
-            double a = 0;
+            // a = total member-method access pairs (sum of distinct members accessed per method).
+            double a = methodAccesses.Values.Sum(members => members.Count);
 
-            if (methodAccesses.Count > 0)
-            {
-                var commonFields = new HashSet<IFieldSymbol>(methodAccesses.Values.First(), SymbolEqualityComparer.Default);
+            // Henderson-Sellers (1996): LCOM5 = (a̅ - k) / (1 - k)
+            // where a̅ = a/l (mean number of methods accessing each attribute).
+            // Rewritten to avoid a separate division: (a - k*l) / (l - k*l).
+            // Denominator is always negative for k > 1, l >= 1, so result is in [0, k/(k-1)].
+            double denominator = l - ((double)k * l);
+            double lcom5 = (a - ((double)k * l)) / denominator;
 
-                foreach (var fieldsSet in methodAccesses.Values.Skip(1))
-                {
-                    commonFields.IntersectWith(fieldsSet);
-                }
-
-                a = commonFields.Count;
-            }
-
-            double LCOM5 = 1 - (a / l);
-
-            //double LCOM5 = (M - (sum_dA / F)) / (M - 1);
-
-            if (LCOM5 > _config.LCOM5Analysis.CohesionThreshold)
+            if (lcom5 > _config.LCOM5Analysis.CohesionThreshold)
             {
                 ReportDiagnostics(
                     context,
                     DiagnosticDescriptors.LCOM5Rule,
-                    classDeclaration.Identifier.GetLocation(),
-                    classSymbol.Name, LCOM5);
+                    typeDeclaration.Identifier.GetLocation(),
+                    typeSymbol.Name,
+                    lcom5);
             }
         }
     }

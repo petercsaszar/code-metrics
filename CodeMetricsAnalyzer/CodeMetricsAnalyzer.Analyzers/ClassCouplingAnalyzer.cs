@@ -22,7 +22,7 @@ namespace CodeMetricsAnalyzer.Analyzers
 
         protected override void AnalyzeClass(SyntaxNodeAnalysisContext context)
         {
-            var classDeclaration = (ClassDeclarationSyntax)context.Node;
+            var classDeclaration = (TypeDeclarationSyntax)context.Node;
             var semanticModel = context.SemanticModel;
 
             var classSymbol = semanticModel.GetDeclaredSymbol(classDeclaration, context.CancellationToken) as INamedTypeSymbol;
@@ -34,22 +34,16 @@ namespace CodeMetricsAnalyzer.Analyzers
             AddCoupledType(coupledTypes, classSymbol.BaseType);
 
             foreach (var implementedInterface in classSymbol.Interfaces)
-            {
                 AddCoupledType(coupledTypes, implementedInterface);
-            }
 
             foreach (var typeParameter in classSymbol.TypeParameters)
             {
                 foreach (var constraintType in typeParameter.ConstraintTypes)
-                {
                     AddCoupledType(coupledTypes, constraintType);
-                }
             }
 
             foreach (var attribute in classSymbol.GetAttributes())
-            {
                 AddCoupledType(coupledTypes, attribute.AttributeClass);
-            }
 
             foreach (var member in classSymbol.GetMembers())
             {
@@ -65,10 +59,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                 {
                     AddCoupledType(coupledTypes, property.Type);
                     foreach (var parameter in property.Parameters)
-                    {
                         AddCoupledType(coupledTypes, parameter.Type);
-                    }
-
                     continue;
                 }
 
@@ -85,32 +76,40 @@ namespace CodeMetricsAnalyzer.Analyzers
                     AddCoupledType(coupledTypes, method.ReturnType);
 
                     foreach (var parameter in method.Parameters)
-                    {
                         AddCoupledType(coupledTypes, parameter.Type);
-                    }
 
                     foreach (var typeParameter in method.TypeParameters)
                     {
                         foreach (var constraintType in typeParameter.ConstraintTypes)
-                        {
                             AddCoupledType(coupledTypes, constraintType);
-                        }
                     }
 
                     foreach (var attribute in method.GetAttributes())
-                    {
                         AddCoupledType(coupledTypes, attribute.AttributeClass);
-                    }
 
                     foreach (var attribute in method.GetReturnTypeAttributes())
-                    {
                         AddCoupledType(coupledTypes, attribute.AttributeClass);
-                    }
                 }
             }
 
             foreach (var memberSyntax in classDeclaration.Members)
             {
+                var fieldDeclaration = memberSyntax as FieldDeclarationSyntax;
+                if (fieldDeclaration != null)
+                {
+                    foreach (var variable in fieldDeclaration.Declaration.Variables)
+                    {
+                        if (variable.Initializer != null)
+                        {
+                            var initOp = semanticModel.GetOperation(
+                                variable.Initializer.Value, context.CancellationToken);
+                            if (initOp != null)
+                                CollectCoupledTypesFromOperation(initOp, coupledTypes);
+                        }
+                    }
+                    continue;
+                }
+
                 var methodDeclaration = memberSyntax as MethodDeclarationSyntax;
                 if (methodDeclaration != null)
                 {
@@ -118,18 +117,14 @@ namespace CodeMetricsAnalyzer.Analyzers
                     {
                         var bodyOperation = semanticModel.GetOperation(methodDeclaration.Body, context.CancellationToken);
                         if (bodyOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
-                        }
                     }
 
                     if (methodDeclaration.ExpressionBody != null)
                     {
                         var expressionOperation = semanticModel.GetOperation(methodDeclaration.ExpressionBody.Expression, context.CancellationToken);
                         if (expressionOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                        }
                     }
 
                     continue;
@@ -142,9 +137,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                     {
                         var expressionOperation = semanticModel.GetOperation(propertyDeclaration.ExpressionBody.Expression, context.CancellationToken);
                         if (expressionOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                        }
                     }
 
                     if (propertyDeclaration.AccessorList != null)
@@ -153,10 +146,16 @@ namespace CodeMetricsAnalyzer.Analyzers
                         {
                             var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
                             if (accessorOperation != null)
-                            {
                                 CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                            }
                         }
+                    }
+
+                    if (propertyDeclaration.Initializer != null)
+                    {
+                        var initOp = semanticModel.GetOperation(
+                            propertyDeclaration.Initializer.Value, context.CancellationToken);
+                        if (initOp != null)
+                            CollectCoupledTypesFromOperation(initOp, coupledTypes);
                     }
 
                     continue;
@@ -169,9 +168,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                     {
                         var expressionOperation = semanticModel.GetOperation(indexerDeclaration.ExpressionBody.Expression, context.CancellationToken);
                         if (expressionOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                        }
                     }
 
                     if (indexerDeclaration.AccessorList != null)
@@ -180,9 +177,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                         {
                             var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
                             if (accessorOperation != null)
-                            {
                                 CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                            }
                         }
                     }
 
@@ -198,9 +193,7 @@ namespace CodeMetricsAnalyzer.Analyzers
                         {
                             var accessorOperation = semanticModel.GetOperation(accessor, context.CancellationToken);
                             if (accessorOperation != null)
-                            {
                                 CollectCoupledTypesFromOperation(accessorOperation, coupledTypes);
-                            }
                         }
                     }
 
@@ -210,22 +203,26 @@ namespace CodeMetricsAnalyzer.Analyzers
                 var constructorDeclaration = memberSyntax as ConstructorDeclarationSyntax;
                 if (constructorDeclaration != null)
                 {
+                    // `: base(...)` or `: this(...)` initializer — types used there count as coupling.
+                    if (constructorDeclaration.Initializer != null)
+                    {
+                        var initOperation = semanticModel.GetOperation(constructorDeclaration.Initializer, context.CancellationToken);
+                        if (initOperation != null)
+                            CollectCoupledTypesFromOperation(initOperation, coupledTypes);
+                    }
+
                     if (constructorDeclaration.Body != null)
                     {
                         var bodyOperation = semanticModel.GetOperation(constructorDeclaration.Body, context.CancellationToken);
                         if (bodyOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(bodyOperation, coupledTypes);
-                        }
                     }
 
                     if (constructorDeclaration.ExpressionBody != null)
                     {
                         var expressionOperation = semanticModel.GetOperation(constructorDeclaration.ExpressionBody.Expression, context.CancellationToken);
                         if (expressionOperation != null)
-                        {
                             CollectCoupledTypesFromOperation(expressionOperation, coupledTypes);
-                        }
                     }
                 }
             }
@@ -255,7 +252,6 @@ namespace CodeMetricsAnalyzer.Analyzers
                 if (operation.IsImplicit)
                     continue;
 
-                AddCoupledType(coupledTypes, operation.Type);
 
                 var variableDeclarationGroup = operation as IVariableDeclarationGroupOperation;
                 if (variableDeclarationGroup != null)
@@ -264,27 +260,24 @@ namespace CodeMetricsAnalyzer.Analyzers
                     {
                         foreach (var declarator in declaration.Declarators)
                         {
-                            AddCoupledType(coupledTypes, declarator.Symbol != null ? declarator.Symbol.Type : null);
+                            if (declarator.Symbol != null)
+                                AddCoupledType(coupledTypes, declarator.Symbol.Type);
                         }
                     }
-
                     continue;
                 }
 
                 var invocation = operation as IInvocationOperation;
                 if (invocation != null)
                 {
-                    AddCoupledType(coupledTypes, invocation.TargetMethod != null ? invocation.TargetMethod.ContainingType : null);
-                    AddCoupledType(coupledTypes, invocation.TargetMethod != null ? invocation.TargetMethod.ReturnType : null);
-
                     if (invocation.TargetMethod != null)
                     {
-                        foreach (var parameter in invocation.TargetMethod.Parameters)
-                        {
-                            AddCoupledType(coupledTypes, parameter.Type);
-                        }
-                    }
+                        AddCoupledType(coupledTypes, invocation.TargetMethod.ContainingType);
+                        AddCoupledType(coupledTypes, invocation.TargetMethod.ReturnType);
 
+                        foreach (var parameter in invocation.TargetMethod.Parameters)
+                            AddCoupledType(coupledTypes, parameter.Type);
+                    }
                     continue;
                 }
 
@@ -292,52 +285,65 @@ namespace CodeMetricsAnalyzer.Analyzers
                 if (objectCreation != null)
                 {
                     AddCoupledType(coupledTypes, objectCreation.Type);
-                    AddCoupledType(coupledTypes, objectCreation.Constructor != null ? objectCreation.Constructor.ContainingType : null);
+                    if (objectCreation.Constructor != null)
+                        AddCoupledType(coupledTypes, objectCreation.Constructor.ContainingType);
                     continue;
                 }
 
                 var propertyReference = operation as IPropertyReferenceOperation;
                 if (propertyReference != null)
                 {
-                    AddCoupledType(coupledTypes, propertyReference.Property != null ? propertyReference.Property.ContainingType : null);
-                    AddCoupledType(coupledTypes, propertyReference.Property != null ? propertyReference.Property.Type : null);
+                    if (propertyReference.Property != null)
+                    {
+                        AddCoupledType(coupledTypes, propertyReference.Property.ContainingType);
+                        AddCoupledType(coupledTypes, propertyReference.Property.Type);
+                    }
                     continue;
                 }
 
                 var fieldReference = operation as IFieldReferenceOperation;
                 if (fieldReference != null)
                 {
-                    AddCoupledType(coupledTypes, fieldReference.Field != null ? fieldReference.Field.ContainingType : null);
-                    AddCoupledType(coupledTypes, fieldReference.Field != null ? fieldReference.Field.Type : null);
+                    if (fieldReference.Field != null)
+                    {
+                        AddCoupledType(coupledTypes, fieldReference.Field.ContainingType);
+                        AddCoupledType(coupledTypes, fieldReference.Field.Type);
+                    }
                     continue;
                 }
 
                 var eventReference = operation as IEventReferenceOperation;
                 if (eventReference != null)
                 {
-                    AddCoupledType(coupledTypes, eventReference.Event != null ? eventReference.Event.ContainingType : null);
-                    AddCoupledType(coupledTypes, eventReference.Event != null ? eventReference.Event.Type : null);
+                    if (eventReference.Event != null)
+                    {
+                        AddCoupledType(coupledTypes, eventReference.Event.ContainingType);
+                        AddCoupledType(coupledTypes, eventReference.Event.Type);
+                    }
                     continue;
                 }
 
                 var memberReference = operation as IMemberReferenceOperation;
                 if (memberReference != null)
                 {
-                    AddCoupledType(coupledTypes, memberReference.Member != null ? memberReference.Member.ContainingType : null);
+                    if (memberReference.Member != null)
+                        AddCoupledType(coupledTypes, memberReference.Member.ContainingType);
                     continue;
                 }
 
                 var localReference = operation as ILocalReferenceOperation;
                 if (localReference != null)
                 {
-                    AddCoupledType(coupledTypes, localReference.Local != null ? localReference.Local.Type : null);
+                    if (localReference.Local != null)
+                        AddCoupledType(coupledTypes, localReference.Local.Type);
                     continue;
                 }
 
                 var parameterReference = operation as IParameterReferenceOperation;
                 if (parameterReference != null)
                 {
-                    AddCoupledType(coupledTypes, parameterReference.Parameter != null ? parameterReference.Parameter.Type : null);
+                    if (parameterReference.Parameter != null)
+                        AddCoupledType(coupledTypes, parameterReference.Parameter.Type);
                     continue;
                 }
 
@@ -352,7 +358,8 @@ namespace CodeMetricsAnalyzer.Analyzers
                 if (conversion != null)
                 {
                     AddCoupledType(coupledTypes, conversion.Type);
-                    AddCoupledType(coupledTypes, conversion.OperatorMethod != null ? conversion.OperatorMethod.ContainingType : null);
+                    if (conversion.OperatorMethod != null)
+                        AddCoupledType(coupledTypes, conversion.OperatorMethod.ContainingType);
                     continue;
                 }
 
@@ -387,7 +394,8 @@ namespace CodeMetricsAnalyzer.Analyzers
                 var throwOperation = operation as IThrowOperation;
                 if (throwOperation != null)
                 {
-                    AddCoupledType(coupledTypes, throwOperation.Exception != null ? throwOperation.Exception.Type : null);
+                    if (throwOperation.Exception != null)
+                        AddCoupledType(coupledTypes, throwOperation.Exception.Type);
                 }
             }
         }
@@ -395,6 +403,9 @@ namespace CodeMetricsAnalyzer.Analyzers
         private void AddCoupledType(HashSet<INamedTypeSymbol> coupledTypes, ITypeSymbol typeSymbol)
         {
             if (typeSymbol == null)
+                return;
+
+            if (typeSymbol is ITypeParameterSymbol)
                 return;
 
             var arrayType = typeSymbol as IArrayTypeSymbol;
@@ -419,9 +430,7 @@ namespace CodeMetricsAnalyzer.Analyzers
 
             var namedType = typeSymbol as INamedTypeSymbol;
             if (namedType != null)
-            {
                 AddNamedTypeRecursively(coupledTypes, namedType);
-            }
         }
 
         private void AddNamedTypeRecursively(HashSet<INamedTypeSymbol> coupledTypes, INamedTypeSymbol type)
@@ -432,21 +441,15 @@ namespace CodeMetricsAnalyzer.Analyzers
             coupledTypes.Add(type.OriginalDefinition);
 
             if (type.ContainingType != null)
-            {
                 AddNamedTypeRecursively(coupledTypes, type.ContainingType);
-            }
 
             foreach (var typeArgument in type.TypeArguments)
-            {
                 AddCoupledType(coupledTypes, typeArgument);
-            }
 
             if (type.IsTupleType)
             {
                 foreach (var tupleElement in type.TupleElements)
-                {
                     AddCoupledType(coupledTypes, tupleElement.Type);
-                }
             }
         }
 

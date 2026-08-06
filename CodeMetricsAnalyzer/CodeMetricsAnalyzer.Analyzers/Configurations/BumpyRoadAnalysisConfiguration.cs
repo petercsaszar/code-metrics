@@ -2,6 +2,6 @@
 {
     public class BumpyRoadAnalysisConfiguration
     {
-        public int BumpynessThreshold { get; set; }
+        public int BumpynessThreshold { get; set; } = 2;
     }
 }

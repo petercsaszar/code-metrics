@@ -14,3 +14,23 @@ __pycache__
 *.DS_Store
 CodeMetricsAnalyzer/**/bin
 CodeMetricsAnalyzer/**/obj
+
+# Runtime outputs — not needed at build time
+reports/
+xml_outputs/
+repos/
+public_repos/
+bulk_analyzer/analysis_outputs/
+analysis_results_*.json
+method_analysis_results*.json
+*.log
+
+# bulk_analyzer: exclude live config (may contain secrets) and non-essential files.
+# config.example.yml is baked in as the image default instead.
+bulk_analyzer/config.yml
+bulk_analyzer/repos.json
+bulk_analyzer/visualization/
+bulk_analyzer/run_container_batch.py
+bulk_analyzer/student_container_analyzer.py
+bulk_analyzer/README.md
+bulk_analyzer/.gitignore

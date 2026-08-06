@@ -2,6 +2,6 @@
 {
     public class FunctionParameterCountAnalysisConfiguration
     {
-        public int ParameterCountThreshold { get; set; }
+        public int ParameterCountThreshold { get; set; } = 2;
     }
 }
